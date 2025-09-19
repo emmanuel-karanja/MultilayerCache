@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  demo:
+    build:
+      context: ./MultilayerCache.Demo
+      dockerfile: Dockerfile
+    container_name: multilayercache-demo
+    depends_on:
+      - redis
+    environment:
+      REDIS_CONNECTION: "redis:6379"

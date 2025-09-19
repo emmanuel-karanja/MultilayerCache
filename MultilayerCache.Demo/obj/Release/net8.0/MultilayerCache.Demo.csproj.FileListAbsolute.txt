@@ -1,0 +1,15 @@
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\bin\Release\net8.0\MultilayerCache.Demo.deps.json
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\bin\Release\net8.0\MultilayerCache.Demo.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\bin\Release\net8.0\MultilayerCache.Demo.pdb
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\bin\Release\net8.0\MultilayerCache.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\bin\Release\net8.0\MultilayerCache.pdb
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.csproj.AssemblyReference.cache
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.AssemblyInfoInputs.cache
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.AssemblyInfo.cs
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.csproj.CoreCompileInputs.cache
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\Multilay.BB5A91A2.Up2Date
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\refint\MultilayerCache.Demo.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.pdb
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\ref\MultilayerCache.Demo.dll

@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dgSpecHash": "iE/kLJIbsrY=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\ZBOOK\\MultilayerCache\\MultilayerCache.Demo\\MultilayerCache.Demo.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\google.protobuf\\3.25.0\\google.protobuf.3.25.0.nupkg.sha512",
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\google.protobuf.tools\\3.25.0\\google.protobuf.tools.3.25.0.nupkg.sha512",
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\pipelines.sockets.unofficial\\2.2.2\\pipelines.sockets.unofficial.2.2.2.nupkg.sha512",
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\stackexchange.redis\\2.6.104\\stackexchange.redis.2.6.104.nupkg.sha512",
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\system.io.pipelines\\5.0.1\\system.io.pipelines.5.0.1.nupkg.sha512"
+  ],
+  "logs": []
+}

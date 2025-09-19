@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework> <!-- Use net8.0 if your library is net8.0 -->
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Protobuf for serialization -->
+    <PackageReference Include="Google.Protobuf" Version="3.25.0" />
+    <PackageReference Include="Google.Protobuf.Tools" Version="3.25.0" PrivateAssets="All" />
+
+    <!-- Reference the library -->
+    <ProjectReference Include="..\MultilayerCache\MultilayerCache.csproj" />
+
+    <!-- Redis support if demo uses it -->
+    <PackageReference Include="StackExchange.Redis" Version="2.6.104" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Include Protos for code generation -->
+    <Protobuf Include="Protos\User.proto" GrpcServices="None" OutputDir="Generated" />
+  </ItemGroup>
+
+</Project>
