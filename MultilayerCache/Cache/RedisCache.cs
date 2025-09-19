@@ -5,8 +5,8 @@ using Google.Protobuf;
 
 namespace MultilayerCache.Cache
 {
-    public class RedisCache<TKey, TValue> : ICache<TKey, TValue>
-    where TValue : IMessage<TValue>
+public class RedisCache<TKey, TValue> : ICache<TKey, TValue>
+where TValue : IMessage<TValue>
 {
     private readonly IDatabase _db;
     private readonly ConnectionMultiplexer _redis;
