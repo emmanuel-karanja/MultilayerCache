@@ -1,0 +1,16 @@
+# Build results
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.vscode/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Protobuf generated files (optional, if you regenerate in build)
+Cache/User.cs
