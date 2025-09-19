@@ -1,21 +1,17 @@
 <#
 .SYNOPSIS
-Automates dependency setup, .proto compilation, build, test, and running the Metrics Demo for MultilayerCache solution
+Automates dependency setup, .proto compilation, build, and starting Redis for the MultilayerCache solution.
 #>
 
 param(
-    [switch]$Clean,
-    [switch]$BuildOnly,
-    [switch]$RunOnly,
-    [switch]$RunMetricsDemo
+    [switch]$Clean
 )
 
 $SolutionRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProtosFolder = Join-Path $SolutionRoot "MultilayerCache.Demo\Protos"
 $GeneratedFolder = Join-Path $SolutionRoot "MultilayerCache.Demo\Generated"
-$MetricsDemoFolder = Join-Path $SolutionRoot "MultilayerCache.Metrics.Demo"
 
-# Function: Ensure protoc exists
+# --- Ensure protoc exists ---
 function Ensure-Protoc {
     Write-Host "Checking for protoc compiler..."
     $protocCmd = "protoc"
@@ -59,13 +55,13 @@ function Ensure-Protoc {
     }
 }
 
-# Function: Clean bin/obj folders
+# --- Clean bin/obj folders ---
 function Clean-Projects {
     Write-Host "Cleaning bin and obj folders..."
     Get-ChildItem -Path $SolutionRoot -Recurse -Include bin,obj | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Function: Compile .proto files
+# --- Compile .proto files ---
 function Compile-Protos {
     Ensure-Protoc
     Write-Host "Compiling .proto files..."
@@ -85,57 +81,55 @@ function Compile-Protos {
     }
 }
 
-# Function: Restore NuGet packages
+# --- Restore NuGet packages ---
 function Restore-Packages {
     Write-Host "Restoring NuGet packages..."
     dotnet restore $SolutionRoot\MultilayerCache.sln
 }
 
-# Function: Build all projects
+# --- Build all projects ---
 function Build-Projects {
     Write-Host "Building all projects..."
     dotnet build $SolutionRoot\MultilayerCache.sln -c Release
 }
 
-# Function: Run unit tests
-function Run-Tests {
-    Write-Host "Running unit tests..."
-    dotnet test $SolutionRoot\MultilayerCache.Tests\MultilayerCache.Tests.csproj -c Release
+# --- Start Redis via Docker Compose ---
+function Start-Redis {
+    Write-Host "Starting Redis container via Docker Compose..."
+    docker-compose -f "$SolutionRoot\docker-compose.yml" up -d redis
+
+    # Wait for Redis to be ready
+    $maxAttempts = 10
+    $attempt = 0
+    $ready = $false
+    while (-not $ready -and $attempt -lt $maxAttempts) {
+        try {
+            $pong = docker exec redis redis-cli ping
+            if ($pong -eq "PONG") {
+                $ready = $true
+                Write-Host "Redis is ready."
+            }
+        } catch {
+            Write-Host "Waiting for Redis..."
+            Start-Sleep -Seconds 2
+        }
+        $attempt++
+    }
+
+    if (-not $ready) {
+        Write-Error "Redis did not start in time. Exiting."
+        exit 1
+    }
 }
 
-# Function: Run Docker Compose
-#function Run-Docker {
-#    Write-Host "Building and starting Docker containers..."
-#  docker-compose -f "$SolutionRoot\docker-compose.yml" up --build
-#}
-
-# Function: Run Metrics Demo
-function Run-MetricsDemo {
-    Write-Host "Running MultiLayerCache.Metrics.Demo..."
-    dotnet run --project $MetricsDemoFolder -c Release
-}
-
-
-
-# MAIN
-
+# --- MAIN ---
 Ensure-Protoc
 
 if ($Clean) { Clean-Projects }
 
 Compile-Protos
+Restore-Packages
+Build-Projects
+Start-Redis
 
-if (-not $RunOnly) {
-    Restore-Packages
-    Build-Projects
-    Run-Tests
-}
-
-if ($RunMetricsDemo) {
-    Run-MetricsDemo
-} elseif (-not $BuildOnly) {
-  #  Run-Docker
-  Write-Host "Docker run skipped"
-}
-
-Write-Host "All tasks completed."
+Write-Host "Build completed and Redis is running."
