@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MultilayerCache.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4ac9cfe5dd857f877826522c197feb8878d1b4f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+71b88e8f39e03cc2982adc3aa27a05d8753dd1e4")]
 [assembly: System.Reflection.AssemblyProductAttribute("MultilayerCache.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MultilayerCache.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

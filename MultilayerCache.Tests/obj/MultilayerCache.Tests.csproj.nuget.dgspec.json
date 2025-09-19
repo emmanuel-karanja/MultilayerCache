@@ -56,9 +56,17 @@
               "target": "Package",
               "version": "[3.25.0, )"
             },
+            "Prometheus.Client": {
+              "target": "Package",
+              "version": "[6.1.0, )"
+            },
             "StackExchange.Redis": {
               "target": "Package",
               "version": "[2.6.104, )"
+            },
+            "prometheus-net": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             }
           },
           "imports": [
