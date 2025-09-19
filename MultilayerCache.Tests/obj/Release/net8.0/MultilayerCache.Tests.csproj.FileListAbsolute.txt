@@ -99,6 +99,7 @@ C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\Multilay
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.AssemblyInfoInputs.cache
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.AssemblyInfo.cs
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.csproj.CoreCompileInputs.cache
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.sourcelink.json
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\Multilay.5034C23C.Up2Date
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\refint\MultilayerCache.Tests.dll

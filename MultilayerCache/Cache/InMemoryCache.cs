@@ -28,6 +28,7 @@ namespace MultilayerCache.Cache
             {
                 if (!item.IsExpired)
                 {
+                    // safely increment hit
                     Metrics.IncrementHit();
                     value = item.Value;
                     return true;

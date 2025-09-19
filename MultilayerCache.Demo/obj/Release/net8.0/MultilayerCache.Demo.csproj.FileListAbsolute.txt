@@ -8,6 +8,7 @@ C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\Multilaye
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.AssemblyInfoInputs.cache
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.AssemblyInfo.cs
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.csproj.CoreCompileInputs.cache
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.sourcelink.json
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\Multilay.BB5A91A2.Up2Date
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\MultilayerCache.Demo.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\obj\Release\net8.0\refint\MultilayerCache.Demo.dll

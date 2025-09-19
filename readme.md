@@ -14,7 +14,6 @@
 * [Testing](#testing)
 * [Docker](#docker)
 * [Protobuf Compilation](#protobuf-compilation)
-* [GitHub Integration](#github-integration)
 * [License](#license)
 
 ---
@@ -59,12 +58,12 @@ MultilayerCache/
 
 ---
 
-## Setup
+## Manual Setup
 
 1. Clone the repository:
 
 ```powershell
-git clone https://github.com/EmmanuelNganga/MultilayerCache.git
+git clone https://github.com/emmanuel-karanja/MultilayerCache.git
 cd MultilayerCache
 ```
 
@@ -77,6 +76,19 @@ dotnet restore MultilayerCache.sln
 3. Install `protoc` (Protocol Buffers compiler) if missing.
 
 ---
+
+## Setup with Automation
+
+``` powershell
+
+git clone https://github.com/emmanuel-karanja/MultilayerCache.git
+cd MultilayerCache
+
+./Run-MultilayerCache.ps1 -Clean -BuildOnly -RunOnly
+
+By default, all three options are run i.e. clean, build, docker image creation and running
+
+```
 
 ## Running the Solution
 

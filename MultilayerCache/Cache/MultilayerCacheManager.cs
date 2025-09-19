@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
 
+/** Manages Multiple Layers of This e.g. Top Layer could be the InMemory, and second layer could be Redis
+ and so on*/
 namespace MultilayerCache.Cache
 {
     public class MultilayerCacheManager<TKey, TValue>

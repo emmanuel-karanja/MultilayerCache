@@ -3,6 +3,8 @@ using System;
 using System.Threading.Tasks;
 using Google.Protobuf;
 
+/*This uses Redis as cache backbone and protobuf messages for latency i.e. protobuf is more compact,
+I have to see what latency serial/deserial adds.*/
 namespace MultilayerCache.Cache
 {
     public class RedisCache<TKey, TValue> : ICache<TKey, TValue> where TValue : IMessage<TValue>
@@ -18,12 +20,12 @@ namespace MultilayerCache.Cache
         public void Set(TKey key, TValue value, TimeSpan ttl)
         {
             var data = ProtobufSerializer.Serialize(value);
-            _db.StringSet(key.ToString(), data, ttl);
+            _db.StringSet(key?.ToString(), data, ttl);
         }
 
         public bool TryGet(TKey key, out TValue value)
         {
-            var data = _db.StringGet(key.ToString());
+            var data = _db.StringGet(key?.ToString());
             if (!data.HasValue)
             {
                 value = default!;

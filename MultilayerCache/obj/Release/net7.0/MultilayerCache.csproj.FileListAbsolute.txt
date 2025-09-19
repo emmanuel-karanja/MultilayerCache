@@ -6,6 +6,7 @@ C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCach
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCache.AssemblyInfoInputs.cache
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCache.AssemblyInfo.cs
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCache.csproj.CoreCompileInputs.cache
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCache.sourcelink.json
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCache.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\refint\MultilayerCache.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache\obj\Release\net7.0\MultilayerCache.pdb
