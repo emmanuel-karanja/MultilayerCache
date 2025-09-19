@@ -104,16 +104,18 @@ function Run-Tests {
 }
 
 # Function: Run Docker Compose
-function Run-Docker {
-    Write-Host "Building and starting Docker containers..."
-    docker-compose -f "$SolutionRoot\docker-compose.yml" up --build
-}
+#function Run-Docker {
+#    Write-Host "Building and starting Docker containers..."
+#  docker-compose -f "$SolutionRoot\docker-compose.yml" up --build
+#}
 
 # Function: Run Metrics Demo
 function Run-MetricsDemo {
     Write-Host "Running MultiLayerCache.Metrics.Demo..."
     dotnet run --project $MetricsDemoFolder -c Release
 }
+
+
 
 # MAIN
 
@@ -132,7 +134,8 @@ if (-not $RunOnly) {
 if ($RunMetricsDemo) {
     Run-MetricsDemo
 } elseif (-not $BuildOnly) {
-    Run-Docker
+  #  Run-Docker
+  Write-Host "Docker run skipped"
 }
 
 Write-Host "All tasks completed."

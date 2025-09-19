@@ -106,3 +106,6 @@ C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\refint\M
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.pdb
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\MultilayerCache.Tests.genruntimeconfig.cache
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\obj\Release\net8.0\ref\MultilayerCache.Tests.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\MultilayerCache.Demo.deps.json
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\MultilayerCache.Demo.runtimeconfig.json
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\MultilayerCache.Demo.exe

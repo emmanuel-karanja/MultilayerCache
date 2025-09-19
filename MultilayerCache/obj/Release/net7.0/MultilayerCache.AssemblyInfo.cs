@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MultilayerCache")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8751d9f5c19208389164a1d992dcc9dceb4b0433")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ee47dd0ba0cc4c48e63ae5904493ce9be9cb8902")]
 [assembly: System.Reflection.AssemblyProductAttribute("MultilayerCache")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MultilayerCache")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
