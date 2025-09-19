@@ -41,7 +41,7 @@ MultilayerCache/
 │   │   ├── MultilayerCacheManager.cs
 │   │   ├── ProtobufSerializer.cs
 │   │   ├── RedisCache.cs
-│   │   └── User.cs (generated from Protos/User.proto)
+│   │   
 │   └── Protos/             # Protocol Buffers .proto files
 ├── MultilayerCache.Demo/   # Demo project
 ├── MultilayerCache.Tests/  # Unit tests
