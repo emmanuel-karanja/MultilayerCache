@@ -84,9 +84,9 @@ dotnet restore MultilayerCache.sln
 git clone https://github.com/emmanuel-karanja/MultilayerCache.git
 cd MultilayerCache
 
-./Run-MultilayerCache.ps1 -Clean -BuildOnly -RunOnly
+./Run-MultilayerCache.ps1 -Clean -BuildOnly -RunOnly -RunMetricsDemo
 
-By default, all three options are run i.e. clean, build, docker image creation and running
+By default, all three options are run i.e. clean, build, docker image creation and running.Include
 
 ```
 

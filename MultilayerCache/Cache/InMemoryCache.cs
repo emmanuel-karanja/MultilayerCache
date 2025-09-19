@@ -28,16 +28,16 @@ namespace MultilayerCache.Cache
             {
                 if (!item.IsExpired)
                 {
-                    // safely increment hit
                     Metrics.IncrementHit();
                     value = item.Value;
                     return true;
                 }
+
                 _cache.TryRemove(key, out _);
             }
 
             Metrics.IncrementMiss();
-            value = default;
+            value = default!;
             return false;
         }
 

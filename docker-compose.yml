@@ -16,3 +16,15 @@ services:
       - redis
     environment:
       REDIS_CONNECTION: "redis:6379"
+
+  metrics-demo:
+    build:
+      context: ./MultilayerCache.Metrics.Demo
+      dockerfile: Dockerfile
+    container_name: multilayercache-metrics-demo
+    depends_on:
+      - redis
+    environment:
+      REDIS_CONNECTION: "redis:6379"
+    ports:
+      - "5000:5000"
