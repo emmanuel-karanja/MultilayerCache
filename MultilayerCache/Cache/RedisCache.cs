@@ -7,14 +7,27 @@ using Microsoft.Extensions.Logging;
 namespace MultilayerCache.Cache
 {
     public class RedisCache<TKey, TValue> : ICache<TKey, TValue>, IDisposable
-        where TValue : IMessage<TValue> 
-        where TKey: notnull
+        where TValue : IMessage<TValue>
+        where TKey : notnull
     {
         private readonly IDatabase _db;
         private readonly ConnectionMultiplexer _redis;
         private readonly ILogger _logger;
 
         public CacheMetrics Metrics { get; } = new();
+
+        // Cached static parser to avoid reflection overhead
+        private static readonly MessageParser<TValue> _parser;
+
+        static RedisCache()
+        {
+            var parserProp = typeof(TValue).GetProperty("Parser",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)
+                ?? throw new InvalidOperationException($"Type {typeof(TValue).Name} does not have a static Parser property.");
+
+            _parser = (MessageParser<TValue>)parserProp.GetValue(null)!;
+        }
+
         public RedisCache(string connectionString, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -22,7 +35,6 @@ namespace MultilayerCache.Cache
             _db = _redis.GetDatabase();
         }
 
-        // Expose multiplexer for metrics/monitoring
         public ConnectionMultiplexer Multiplexer => _redis;
 
         public void Set(TKey key, TValue value, TimeSpan ttl)
@@ -39,6 +51,20 @@ namespace MultilayerCache.Cache
             }
         }
 
+        public async Task SetAsync(TKey key, TValue value, TimeSpan ttl)
+        {
+            try
+            {
+                var data = ProtobufSerializer.Serialize(value);
+                await _db.StringSetAsync(key.ToString(), data, ttl);
+                _logger.LogDebug("Async set key {Key} in Redis with TTL {TTL}", key, ttl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to async set key {Key} in Redis", key);
+            }
+        }
+
         public bool TryGet(TKey key, out TValue value)
         {
             try
@@ -51,11 +77,7 @@ namespace MultilayerCache.Cache
                     return false;
                 }
 
-                var parserProp = typeof(TValue).GetProperty("Parser",
-                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
-                var parser = (MessageParser<TValue>)parserProp!.GetValue(null)!;
-                value = parser.ParseFrom((byte[])data);
-
+                value = _parser.ParseFrom((byte[])data);
                 _logger.LogDebug("Redis cache hit for key {Key}", key);
                 return true;
             }
@@ -67,16 +89,26 @@ namespace MultilayerCache.Cache
             }
         }
 
-        public Task SetAsync(TKey key, TValue value, TimeSpan ttl)
+        public async Task<(bool found, TValue value)> TryGetAsync(TKey key)
         {
-            Set(key, value, ttl);
-            return Task.CompletedTask;
-        }
+            try
+            {
+                var data = await _db.StringGetAsync(key.ToString());
+                if (!data.HasValue)
+                {
+                    _logger.LogDebug("Redis cache miss for key {Key}", key);
+                    return (false, default!);
+                }
 
-        public Task<(bool found, TValue value)> TryGetAsync(TKey key)
-        {
-            var found = TryGet(key, out var value);
-            return Task.FromResult((found, value));
+                var value = _parser.ParseFrom((byte[])data);
+                _logger.LogDebug("Redis cache hit for key {Key}", key);
+                return (true, value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error reading key {Key} from Redis", key);
+                return (false, default!);
+            }
         }
 
         public void Dispose()
