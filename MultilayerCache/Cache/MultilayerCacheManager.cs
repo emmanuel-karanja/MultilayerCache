@@ -1,12 +1,13 @@
 using System;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace MultilayerCache.Cache
 {
     /// <summary>
-    /// Manages multi-layer caching. Supports pluggable write policies and a loader function.
-    /// Now supports an optional persistent store writer delegate.
+    /// Manages multi-layer caching. Supports pluggable write policies,
+    /// loader functions, persistent store writes, and request coalescing.
     /// </summary>
     public class MultilayerCacheManager<TKey, TValue>
     {
@@ -14,7 +15,11 @@ namespace MultilayerCache.Cache
         private readonly Func<TKey, Task<TValue>> _loaderFunction;
         private readonly ILogger _logger;
         private readonly IWritePolicy<TKey, TValue> _writePolicy;
-        private readonly Func<TKey, TValue, Task>? _persistentStoreWriter;
+        private readonly Func<TKey, TValue, Task> _persistentStoreWriter;
+
+        // 👇 Tracks in-flight loader tasks for request coalescing
+        private readonly ConcurrentDictionary<TKey, Lazy<Task<TValue>>> _inflight =
+            new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>();
 
         public MultilayerCacheManager(
             ICache<TKey, TValue>[] layers,
@@ -31,22 +36,23 @@ namespace MultilayerCache.Cache
             var ttl = defaultTtl ?? TimeSpan.FromMinutes(5);
             _writePolicy = writePolicy ?? new WriteThroughPolicy<TKey, TValue>(ttl);
 
-             // Default writer: logs a warning but does nothing
+            // Default writer logs a warning if no persistent store is provided
             _persistentStoreWriter = persistentStoreWriter ?? ((key, value) =>
             {
                 _logger.LogWarning(
-                    "⚠ Persistent store writer not provided. Key {Key} was written to caches but NOT persisted.",
+                    "⚠ Persistent store writer not provided. Key {Key} written to caches but NOT persisted.",
                     key);
                 return Task.CompletedTask;
             });
         }
 
         /// <summary>
-        /// Get a value from the cache or load it if not present.
+        /// Attempts to get a value from cache layers or loads it via the loader function.
+        /// Coalesces concurrent requests for the same key.
         /// </summary>
         public async Task<TValue> GetOrAddAsync(TKey key)
         {
-            // 1. Check all cache layers
+            // 1️⃣ Try all cache layers first
             for (int i = 0; i < _layers.Length; i++)
             {
                 try
@@ -56,7 +62,7 @@ namespace MultilayerCache.Cache
                     {
                         _logger.LogDebug("Cache hit at layer {Layer} for key {Key}", i, key);
 
-                        // Promote to higher layers if found deeper
+                        // Promote to upper layers if needed
                         for (int j = 0; j < i; j++)
                         {
                             try
@@ -78,28 +84,36 @@ namespace MultilayerCache.Cache
                 }
             }
 
-            // 2. Cache miss → use loader function
-            TValue loadedValue = await _loaderFunction(key);
-            _logger.LogDebug("Cache miss for key {Key}, loaded via loader function", key);
+            // 2️⃣ Request coalescing: ensure only one loader call per key
+            var lazyTask = _inflight.GetOrAdd(key, k =>
+                new Lazy<Task<TValue>>(async () =>
+                {
+                    try
+                    {
+                        var loaded = await _loaderFunction(k);
+                        _logger.LogDebug("Cache miss for key {Key}, loaded via loader", k);
 
-            // 3. Write to cache layers and persistent store
-           
-            await _writePolicy.WriteAsync(key, loadedValue, _layers, _logger, _persistentStoreWriter);
-            
-            return loadedValue;
+                        // Write through to caches and persistent store
+                        await _writePolicy.WriteAsync(k, loaded, _layers, _logger, _persistentStoreWriter);
+
+                        return loaded;
+                    }
+                    finally
+                    {
+                        // Remove from inflight once finished
+                        _inflight.TryRemove(k, out _);
+                    }
+                }));
+
+            // Await the shared task
+            return await lazyTask.Value;
         }
 
-        /// <summary>
-        /// Synchronous wrapper around GetOrAddAsync.
-        /// </summary>
+        /// <summary>Synchronous wrapper around GetOrAddAsync.</summary>
         public TValue GetOrAdd(TKey key) => GetOrAddAsync(key).GetAwaiter().GetResult();
 
-        /// <summary>
-        /// Directly set a value using the write policy.
-        /// </summary>
-        public Task SetAsync(TKey key, TValue value)
-        {
-            return _writePolicy.WriteAsync(key, value, _layers, _logger, _persistentStoreWriter);
-        }
+        /// <summary>Directly sets a value using the write policy.</summary>
+        public Task SetAsync(TKey key, TValue value) =>
+            _writePolicy.WriteAsync(key, value, _layers, _logger, _persistentStoreWriter);
     }
 }
