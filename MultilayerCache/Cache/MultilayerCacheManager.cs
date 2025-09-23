@@ -83,15 +83,9 @@ namespace MultilayerCache.Cache
             _logger.LogDebug("Cache miss for key {Key}, loaded via loader function", key);
 
             // 3. Write to cache layers and persistent store
-            if (_writePolicy is IWritePolicy<TKey, TValue> advancedPolicy)
-            {
-                await advancedPolicy.WriteAsync(key, loadedValue, _layers, _logger, _persistentStoreWriter);
-            }
-            else
-            {
-                await _writePolicy.WriteAsync(key, loadedValue, _layers, _logger, _persistentStoreWriter);
-            }
-
+           
+            await _writePolicy.WriteAsync(key, loadedValue, _layers, _logger, _persistentStoreWriter);
+            
             return loadedValue;
         }
 
