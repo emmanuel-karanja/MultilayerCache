@@ -43,6 +43,8 @@ C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Microsof
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Moq.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Newtonsoft.Json.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Polly.dll
+C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Polly.Core.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Prometheus.NetStandard.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Prometheus.Client.dll
 C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Tests\bin\Release\net8.0\Prometheus.Client.Abstractions.dll

@@ -56,6 +56,10 @@
               "target": "Package",
               "version": "[8.0.0, )"
             },
+            "Polly": {
+              "target": "Package",
+              "version": "[8.6.3, )"
+            },
             "StackExchange.Redis": {
               "target": "Package",
               "version": "[2.6.102, )"

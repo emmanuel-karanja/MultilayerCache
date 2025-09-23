@@ -81,16 +81,16 @@ $redisContainerName = "redis_cache"
 
 while ($retry -lt $MaxRedisRetries -and -not $redisReady) {
     try {
-        $status = docker inspect --format='{{.State.Health.Status}}' $redisContainerName 2>$null
+        $status = (docker inspect --format="{{.State.Health.Status}}" $redisContainerName 2>$null).Trim()
         if ($status -eq "healthy") {
             $redisReady = $true
         } else {
-            Write-Host "⏳ Redis not ready yet (attempt $($retry+1)/$MaxRedisRetries). Status: $status. Waiting $RedisRetryDelaySeconds seconds..."
+            Write-Host "⏳ Attempt $($retry+1)/$MaxRedisRetries : Redis status = '$status'. Retrying..."
             Start-Sleep -Seconds $RedisRetryDelaySeconds
             $retry++
         }
     } catch {
-        Write-Host "⏳ Redis container not found yet. Waiting $RedisRetryDelaySeconds seconds..."
+        Write-Host "⏳ Redis container not ready yet. Retrying..."
         Start-Sleep -Seconds $RedisRetryDelaySeconds
         $retry++
     }
