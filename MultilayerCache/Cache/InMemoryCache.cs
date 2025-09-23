@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace MultilayerCache.Cache
 {
     public class InMemoryCache<TKey, TValue> : ICache<TKey, TValue>, IDisposable
+     where TKey: notnull
     {
         private readonly ConcurrentDictionary<TKey, CacheItem<TValue>> _cache = new();
         private readonly Timer _cleanupTimer;

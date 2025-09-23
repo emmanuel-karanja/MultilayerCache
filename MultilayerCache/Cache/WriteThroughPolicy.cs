@@ -6,6 +6,7 @@ namespace MultilayerCache.Cache;
     /// Writes data to all cache layers and a persistent store on every write.
     /// </summary>
     public class WriteThroughPolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
+     where TKey: notnull
     {
         private readonly TimeSpan _ttl;
 

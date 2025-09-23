@@ -7,6 +7,7 @@ namespace MultilayerCache.Cache;
     /// to other layers and a persistent store.
     /// </summary>
     public class WriteBehindPolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
+     where TKey: notnull
     {
         private readonly TimeSpan _ttl;
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MultilayerCache.Cache;
 public interface IWritePolicy<TKey, TValue>
+ where TKey: notnull
 {
      Task WriteAsync(
         TKey key, 

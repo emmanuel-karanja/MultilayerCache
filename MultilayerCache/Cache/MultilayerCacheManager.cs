@@ -10,6 +10,7 @@ namespace MultilayerCache.Cache
     /// loader functions, persistent store writes, and request coalescing.
     /// </summary>
     public class MultilayerCacheManager<TKey, TValue>
+    where TKey: notnull
     {
         private readonly ICache<TKey, TValue>[] _layers;
         private readonly Func<TKey, Task<TValue>> _loaderFunction;
