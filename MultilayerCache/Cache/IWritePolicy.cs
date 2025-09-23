@@ -5,6 +5,7 @@ namespace MultilayerCache.Cache;
 public interface IWritePolicy<TKey, TValue>
  where TKey: notnull
 {
+    TimeSpan DefaultTtl { get; } 
      Task WriteAsync(
         TKey key, 
         TValue value, 

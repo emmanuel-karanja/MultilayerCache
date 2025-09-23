@@ -24,6 +24,8 @@
     <!-- Protobuf and Redis for testing -->
     <PackageReference Include="Google.Protobuf" Version="3.25.0" />
     <PackageReference Include="StackExchange.Redis" Version="2.6.104" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

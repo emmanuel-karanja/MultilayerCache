@@ -1,26 +1,38 @@
 using Microsoft.Extensions.Logging;
 
-namespace MultilayerCache.Cache;
-/// <summary>
+namespace MultilayerCache.Cache
+{
+    /// <summary>
     /// Implements a write-behind caching policy.
-    /// Writes immediately to the fastest cache layer, then propagates asynchronously
-    /// to other layers and a persistent store.
+    /// Writes immediately to the first cache layer (usually in-memory),
+    /// then propagates asynchronously to other cache layers and a persistent store.
     /// </summary>
     public class WriteBehindPolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
-     where TKey: notnull
+        where TKey : notnull
     {
-        private readonly TimeSpan _ttl;
-
-        public WriteBehindPolicy(TimeSpan ttl) => _ttl = ttl;
+        /// <summary>
+        /// Default TTL for cached items.
+        /// </summary>
+        public TimeSpan DefaultTtl { get; }
 
         /// <summary>
-        /// Write-behind strategy: write synchronously to L1, then asynchronously to the other layers and persistent store.
+        /// Constructor
+        /// </summary>
+        /// <param name="ttl">Time-to-live for cached items.</param>
+        public WriteBehindPolicy(TimeSpan ttl)
+        {
+            DefaultTtl = ttl;
+        }
+
+        /// <summary>
+        /// Write-behind strategy: write synchronously to the first cache layer,
+        /// then asynchronously propagate to other layers and the persistent store.
         /// </summary>
         /// <param name="key">Cache key.</param>
         /// <param name="value">Value to cache and persist.</param>
         /// <param name="layers">Cache layers.</param>
         /// <param name="logger">Logger instance.</param>
-        /// <param name="persistentStoreWriter">Delegate to write the value to the persistent store.</param>
+        /// <param name="persistentStoreWriter">Delegate to write the value to persistent storage.</param>
         public async Task WriteAsync(
             TKey key,
             TValue value,
@@ -28,10 +40,10 @@ namespace MultilayerCache.Cache;
             ILogger logger,
             Func<TKey, TValue, Task> persistentStoreWriter)
         {
-            // 1. Write synchronously to the first (fastest) layer
+            // 1️. Write synchronously to the first (fastest) layer
             try
             {
-                await layers[0].SetAsync(key, value, _ttl);
+                await layers[0].SetAsync(key, value, DefaultTtl);
                 logger.LogDebug("Write-behind wrote key {Key} to first layer {Layer}", key, layers[0].GetType().Name);
             }
             catch (Exception ex)
@@ -39,14 +51,15 @@ namespace MultilayerCache.Cache;
                 logger.LogWarning(ex, "Write-behind failed for key {Key} in top layer", key);
             }
 
-            // 2. Asynchronous propagation to other layers and persistent store
+            // 2. Async propagation to other layers and persistent store
             _ = Task.Run(async () =>
             {
+                // Propagate to remaining cache layers
                 for (int i = 1; i < layers.Length; i++)
                 {
                     try
                     {
-                        await layers[i].SetAsync(key, value, _ttl);
+                        await layers[i].SetAsync(key, value, DefaultTtl);
                         logger.LogDebug("Write-behind propagated key {Key} to layer {Layer}", key, layers[i].GetType().Name);
                     }
                     catch (Exception ex)
@@ -55,6 +68,7 @@ namespace MultilayerCache.Cache;
                     }
                 }
 
+                // Write to persistent store
                 if (persistentStoreWriter != null)
                 {
                     try
@@ -74,3 +88,4 @@ namespace MultilayerCache.Cache;
             });
         }
     }
+}

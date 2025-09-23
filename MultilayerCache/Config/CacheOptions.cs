@@ -1,5 +1,11 @@
 namespace MultilayerCache.Config
 {
+    public class RedisOptions
+    {
+        public string Host { get; set; } = "localhost";
+        public int Port { get; set; } = 6379;
+        public string ConnectionString => $"{Host}:{Port}";
+    }
     public class CacheOptions
     {
         public int MemoryCacheCleanupIntervalSeconds { get; set; }
@@ -9,10 +15,4 @@ namespace MultilayerCache.Config
         public int WaitForExpirySeconds { get; set; }
     }
 
-    public class RedisOptions
-    {
-        public string Host { get; set; } = "localhost";
-        public int Port { get; set; } = 6379;
-        public string ConnectionString => $"{Host}:{Port}";
-    }
 }

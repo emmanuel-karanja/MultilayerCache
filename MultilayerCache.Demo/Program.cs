@@ -7,9 +7,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
-using System;
-using System.IO;
-using System.Threading.Tasks;
 
 class Program
 {
@@ -48,20 +45,23 @@ class Program
             // --- Configure DI ---
             var services = new ServiceCollection();
             services.Configure<CacheOptions>(config.GetSection("Cache"));
+            services.Configure<MultilayerCacheOptions>(config.GetSection("MultilayerCache")); // <-- externalized cache manager options
             services.AddLogging(builder => builder.AddSerilog());
 
             using var provider = services.BuildServiceProvider();
 
-            var options = provider.GetRequiredService<IOptions<CacheOptions>>().Value;
+            var cacheOptions = provider.GetRequiredService<IOptions<CacheOptions>>().Value;
+            var mlCacheOptions = provider.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
+
             var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
             var cacheLogger = loggerFactory.CreateLogger("CacheDemo");
 
             // --- Setup caches ---
             var memoryCache = new InMemoryCache<string, User>(
-                TimeSpan.FromSeconds(options.MemoryCacheCleanupIntervalSeconds),
+                TimeSpan.FromSeconds(cacheOptions.MemoryCacheCleanupIntervalSeconds),
                 cacheLogger);
 
-            var redisConnection = options.Redis.ConnectionString;
+            var redisConnection = cacheOptions.Redis.ConnectionString;
             cacheLogger.LogInformation("Connecting to Redis at {RedisConnection}", redisConnection);
 
             var redisCache = new RedisCache<string, User>(
@@ -83,12 +83,16 @@ class Program
                 });
             }
 
-            // Create cache manager
+            // Create cache manager using externalized MultilayerCacheOptions
             var cache = new MultilayerCacheManager<string, User>(
-                new ICache<string, User>[] { memoryCache, redisCache },
+                [memoryCache, redisCache],
                 LoaderFunction,
                 cacheLogger,
-                defaultTtl: TimeSpan.FromMinutes(options.DefaultTtlMinutes));
+                defaultTtl: mlCacheOptions.DefaultTtl,
+                earlyRefreshThreshold: mlCacheOptions.EarlyRefreshThreshold,
+                minRefreshInterval: mlCacheOptions.MinRefreshInterval,
+                maxConcurrentEarlyRefreshes: mlCacheOptions.MaxConcurrentEarlyRefreshes
+            );
 
             // --- Demo run ---
             var random = new Random();
@@ -96,9 +100,9 @@ class Program
 
             using (LogContext.PushProperty("ClassName", "Program"))
             {
-                Log.Information("Caching {TotalItems:N0} users...", options.TotalItems);
+                Log.Information("Caching {TotalItems:N0} users...", cacheOptions.TotalItems);
 
-                for (int i = 1; i <= options.TotalItems; i++)
+                for (int i = 1; i <= cacheOptions.TotalItems; i++)
                 {
                     var user = new User { Id = i, Name = $"User {i}", Email = $"user{i}@example.com" };
                     await cache.SetAsync($"user:{i}", user);
@@ -112,17 +116,17 @@ class Program
 
                 for (int j = 0; j < 500; j++)
                 {
-                    int id = random.Next(1, options.TotalItems + 1);
+                    int id = random.Next(1, cacheOptions.TotalItems + 1);
                     await cache.GetOrAddAsync($"user:{id}");
                 }
 
-                Log.Information("Waiting {Wait}s for memory cache to expire...", options.WaitForExpirySeconds);
-                await Task.Delay(TimeSpan.FromSeconds(options.WaitForExpirySeconds));
+                Log.Information("Waiting {Wait}s for memory cache to expire...", cacheOptions.WaitForExpirySeconds);
+                await Task.Delay(TimeSpan.FromSeconds(cacheOptions.WaitForExpirySeconds));
 
                 Log.Information("Accessing 2000 random users after memory expiration (L2 hits expected)...");
                 for (int j = 0; j < 2000; j++)
                 {
-                    int id = random.Next(1, options.TotalItems + 1);
+                    int id = random.Next(1, cacheOptions.TotalItems + 1);
                     var user = await cache.GetOrAddAsync($"user:{id}");
                     if (user != null) redisFallbacks++;
                 }
@@ -130,7 +134,7 @@ class Program
                 Log.Information("Accessing 500 random *non-existent* users...");
                 for (int j = 0; j < 500; j++)
                 {
-                    int fakeId = options.TotalItems + random.Next(1, 1000);
+                    int fakeId = cacheOptions.TotalItems + random.Next(1, 1000);
                     await cache.GetOrAddAsync($"user:{fakeId}");
                 }
 

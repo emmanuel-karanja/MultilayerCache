@@ -1,16 +1,27 @@
 using Microsoft.Extensions.Logging;
 
-namespace MultilayerCache.Cache;
-/// <summary>
+namespace MultilayerCache.Cache
+{
+    /// <summary>
     /// Implements a write-through caching policy.
     /// Writes data to all cache layers and a persistent store on every write.
     /// </summary>
     public class WriteThroughPolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
-     where TKey: notnull
+        where TKey : notnull
     {
-        private readonly TimeSpan _ttl;
+        /// <summary>
+        /// Default TTL for cached items.
+        /// </summary>
+        public TimeSpan DefaultTtl { get; }
 
-        public WriteThroughPolicy(TimeSpan ttl) => _ttl = ttl;
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="ttl">Time-to-live for cached items.</param>
+        public WriteThroughPolicy(TimeSpan ttl)
+        {
+            DefaultTtl = ttl;
+        }
 
         /// <summary>
         /// Writes the value to all cache layers and the persistent store.
@@ -27,13 +38,13 @@ namespace MultilayerCache.Cache;
             ILogger logger,
             Func<TKey, TValue, Task> persistentStoreWriter)
         {
-            // 1. Write to all cache layers
+            // 1️. Write to all cache layers
             foreach (var layer in layers)
             {
                 try
                 {
-                    await layer.SetAsync(key, value, _ttl);
-                    logger.LogDebug("Wrote key {Key} to {Layer}", key, layer.GetType().Name);
+                    await layer.SetAsync(key, value, DefaultTtl);
+                    logger.LogDebug("Write-through wrote key {Key} to {Layer}", key, layer.GetType().Name);
                 }
                 catch (Exception ex)
                 {
@@ -51,7 +62,7 @@ namespace MultilayerCache.Cache;
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Persistent store write failed for key {Key}", key);
+                    logger.LogError(ex, "Write-through persistent store write failed for key {Key}", key);
                     throw; // Fail fast to signal persistence failure
                 }
             }
@@ -60,4 +71,5 @@ namespace MultilayerCache.Cache;
                 logger.LogWarning("No persistent store writer provided for key {Key}", key);
             }
         }
+    }
 }
