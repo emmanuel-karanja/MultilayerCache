@@ -11,6 +11,7 @@ public interface IWritePolicy<TKey, TValue>
         TValue value, 
         ICache<TKey, TValue>[] layers, 
         ILogger logger,
-        Func<TKey, TValue, Task> persistentStoreWriter // <- Added delegate
+        Func<TKey, TValue, Task> persistentStoreWriter, // <- Added delegate
+        TimeSpan? ttl = null
     );
 }

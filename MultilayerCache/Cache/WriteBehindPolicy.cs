@@ -33,17 +33,19 @@ namespace MultilayerCache.Cache
         /// <param name="layers">Cache layers.</param>
         /// <param name="logger">Logger instance.</param>
         /// <param name="persistentStoreWriter">Delegate to write the value to persistent storage.</param>
+        /// <param name="ttl">TTL with jitter</param>
         public async Task WriteAsync(
             TKey key,
             TValue value,
             ICache<TKey, TValue>[] layers,
             ILogger logger,
-            Func<TKey, TValue, Task> persistentStoreWriter)
+            Func<TKey, TValue, Task> persistentStoreWriter,
+            TimeSpan? ttl = null)
         {
             // 1️. Write synchronously to the first (fastest) layer
             try
             {
-                await layers[0].SetAsync(key, value, DefaultTtl);
+                await layers[0].SetAsync(key, value, ttl??DefaultTtl);
                 logger.LogDebug("Write-behind wrote key {Key} to first layer {Layer}", key, layers[0].GetType().Name);
             }
             catch (Exception ex)

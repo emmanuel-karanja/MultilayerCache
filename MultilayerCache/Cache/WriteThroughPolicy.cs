@@ -31,19 +31,21 @@ namespace MultilayerCache.Cache
         /// <param name="layers">Cache layers (e.g., in-memory, Redis).</param>
         /// <param name="logger">Logger for diagnostic messages.</param>
         /// <param name="persistentStoreWriter">Delegate to write to the persistent store.</param>
+        /// <param name="ttl">TTL with jitter</param>
         public async Task WriteAsync(
             TKey key,
             TValue value,
             ICache<TKey, TValue>[] layers,
             ILogger logger,
-            Func<TKey, TValue, Task> persistentStoreWriter)
+            Func<TKey, TValue, Task> persistentStoreWriter,
+            TimeSpan? ttl = null)
         {
             // 1️. Write to all cache layers
             foreach (var layer in layers)
             {
                 try
                 {
-                    await layer.SetAsync(key, value, DefaultTtl);
+                    await layer.SetAsync(key, value, ttl ??DefaultTtl);
                     logger.LogDebug("Write-through wrote key {Key} to {Layer}", key, layer.GetType().Name);
                 }
                 catch (Exception ex)

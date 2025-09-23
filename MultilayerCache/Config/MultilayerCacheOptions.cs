@@ -22,5 +22,7 @@ namespace MultilayerCache.Config
 
         /// <summary>Optional: Metrics logging interval in seconds</summary>
         public int MetricsLoggingIntervalSeconds { get; set; } = 60;
+        public double TtlJitterFraction { get; set; } = 0.1; // ±10% by default
+        
     }
 }

@@ -62,6 +62,9 @@ namespace MultilayerCache.Cache
         // Metrics for early refresh
         private readonly ConcurrentDictionary<TKey, int> _earlyRefreshCounts = new();
         private int _globalEarlyRefreshCount = 0;
+        private readonly double _ttlJitterFraction; // e.g., 0.1 = ±10% jitter
+        private readonly Random _random = new();
+
 
         // Configuration for early refresh
         private readonly TimeSpan _earlyRefreshThreshold;         // How close to TTL we trigger early refresh
@@ -80,6 +83,7 @@ namespace MultilayerCache.Cache
         /// <param name="earlyRefreshThreshold">Time before TTL to trigger early refresh</param>
         /// <param name="minRefreshInterval">Minimum interval between early refresh per key</param>
         /// <param name="maxConcurrentEarlyRefreshes">Max number of concurrent early refresh tasks</param>
+        /// <param name="ttlJitterFraction">jitter for TTL</param>
         public MultilayerCacheManager(
             ICache<TKey, TValue>[] layers,
             Func<TKey, Task<TValue>> loaderFunction,
@@ -89,7 +93,8 @@ namespace MultilayerCache.Cache
             Func<TKey, TValue, Task>? persistentStoreWriter = null,
             TimeSpan? earlyRefreshThreshold = null,
             TimeSpan? minRefreshInterval = null,
-            int maxConcurrentEarlyRefreshes = 10)
+            int maxConcurrentEarlyRefreshes = 10,
+            double ttlJitterFraction=0.1)
         {
             _layers = layers ?? throw new ArgumentNullException(nameof(layers));
             _loaderFunction = loaderFunction ?? throw new ArgumentNullException(nameof(loaderFunction));
@@ -107,12 +112,13 @@ namespace MultilayerCache.Cache
             _earlyRefreshThreshold = earlyRefreshThreshold ?? TimeSpan.FromMinutes(1);
             _minRefreshInterval = minRefreshInterval ?? TimeSpan.FromSeconds(30);
             _earlyRefreshConcurrencySemaphore = new SemaphoreSlim(maxConcurrentEarlyRefreshes, maxConcurrentEarlyRefreshes);
+            _ttlJitterFraction = Math.Clamp(ttlJitterFraction, 0, 1); // ensure valid fraction
         }
 
         /// <summary>
         /// Fetches a value from cache or loader. Implements request coalescing and triggers early refresh if needed.
         /// </summary>
-        public async Task<TValue> GetOrAddAsync(TKey key)
+       public async Task<TValue> GetOrAddAsync(TKey key)
         {
             // Try each cache layer in order
             for (int i = 0; i < _layers.Length; i++)
@@ -129,15 +135,18 @@ namespace MultilayerCache.Cache
                         {
                             try
                             {
-                                await _layers[j].SetAsync(key, value, TimeSpan.FromMinutes(5));
+                                // add jitter to the TTL 
+                                var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
+                                await _layers[j].SetAsync(key, value, ttlWithJitter);
                             }
                             catch (Exception ex)
                             {
                                 _logger.LogWarning(ex, "Failed to promote key {Key} to layer {Layer}", key, j);
                             }
                         }
-                         // TODO: (Look at how this could be made better if it's a problem. For now
-                         // Fire and Forget trigger early refresh,
+
+                        // TODO: (Look at how this could be made better if it's a problem. For now
+                        // Fire and Forget trigger early refresh,
                         TriggerEarlyRefresh(key);
                         return value;
                     }
@@ -149,7 +158,7 @@ namespace MultilayerCache.Cache
             }
 
             // Request coalescing using Lazy<Task>, Thundering Herd mitigation
-            //Prevents multiple calls to the loader for the same key
+            // Prevents multiple calls to the loader for the same key
             var lazyTask = _inflight.GetOrAdd(key, k =>
                 new Lazy<Task<TValue>>(async () =>
                 {
@@ -162,7 +171,15 @@ namespace MultilayerCache.Cache
                             var loadedValue = await _loaderFunction(k);
                             _logger.LogDebug("Cache miss for key {Key}, loaded via loader", k);
 
-                            await _writePolicy.WriteAsync(k, loadedValue, _layers, _logger, _persistentStoreWriter);
+                            // Apply jitter to TTL when writing via write policy
+                            var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
+                            await _writePolicy.WriteAsync(k, loadedValue, _layers, _logger,
+                                async (writeKey, writeValue) =>
+                                {
+                                    foreach (var layer in _layers)
+                                        await layer.SetAsync(writeKey, writeValue, ttlWithJitter);
+                                });
+
                             _lastRefresh[k] = DateTime.UtcNow;
 
                             return loadedValue;
@@ -176,12 +193,13 @@ namespace MultilayerCache.Cache
                     {
                         _inflight.TryRemove(k, out _);
                     }
-                }, LazyThreadSafetyMode.ExecutionAndPublication) //Only one thread runs the initializer. 
-                // All other threads wait for the value. Once initialized, the same value is returned to all threads.
+                }, LazyThreadSafetyMode.ExecutionAndPublication) // Only one thread runs the initializer. 
+                                                                // All other threads wait for the value. Once initialized, the same value is returned to all threads.
             );
 
             return await lazyTask.Value;
         }
+
 
         /// <summary>
         /// Synchronous wrapper around GetOrAddAsync
@@ -191,14 +209,20 @@ namespace MultilayerCache.Cache
         /// <summary>
         /// Sets a value and updates last refresh timestamp
         /// </summary>
-        public Task SetAsync(TKey key, TValue value)
+       public Task SetAsync(TKey key, TValue value)
         {
             _lastRefresh[key] = DateTime.UtcNow;
-            return _writePolicy.WriteAsync(key, value, _layers, _logger, _persistentStoreWriter);
+
+            // Apply TTL jitter
+            var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
+
+            return _writePolicy.WriteAsync(key, value, _layers, _logger, _persistentStoreWriter, ttlWithJitter);
         }
 
+
         /// <summary>
-        /// Triggers a background early refresh if the cached value is approaching TTL.
+        /// Triggers a background early refresh if the cached value is approaching TTL. This will mitigate the Cache Stampede with keys
+        /// expiring right around the same time. We can add a jitter too. TODO: Add jitter to ttl
         /// Uses per-key throttling and global concurrency limiting.
         /// </summary>
         private void TriggerEarlyRefresh(TKey key)
@@ -229,7 +253,18 @@ namespace MultilayerCache.Cache
                     try
                     {
                         var refreshedValue = await _loaderFunction(key);
-                        await _writePolicy.WriteAsync(key, refreshedValue, _layers, _logger, _persistentStoreWriter);
+
+                        // Apply jitter to TTL before writing
+                        var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
+                        await _writePolicy.WriteAsync(key, refreshedValue, _layers, _logger,
+                            async (k, v) =>
+                            {
+                                // Write to all layers with jittered TTL
+                                foreach (var layer in _layers)
+                                    await layer.SetAsync(k, v, ttlWithJitter);
+                            });
+
+                        // Update last refresh timestamp
                         _lastRefresh[key] = DateTime.UtcNow;
 
                         var count = _earlyRefreshCounts.AddOrUpdate(key, 1, (_, c) => c + 1);
@@ -251,6 +286,19 @@ namespace MultilayerCache.Cache
         }
 
         /// <summary>
+        /// Adds random jitter (±10%) to the TTL to prevent cache stampede.
+        /// </summary>
+        private TimeSpan ApplyTtlJitter(TimeSpan baseTtl)
+        {
+            if (_ttlJitterFraction <= 0) return baseTtl;
+
+            // Random fraction between -_ttlJitterFraction and +_ttlJitterFraction
+            var jitter = (_random.NextDouble() * 2 - 1) * _ttlJitterFraction;
+            var jitteredTicks = (long)(baseTtl.Ticks * (1 + jitter));
+            return TimeSpan.FromTicks(jitteredTicks);
+        }
+
+        /// <summary>
         /// Returns the number of early refreshes for a specific key
         /// </summary>
         public int GetEarlyRefreshCount(TKey key) =>
@@ -260,5 +308,6 @@ namespace MultilayerCache.Cache
         /// Returns the global number of early refreshes
         /// </summary>
         public int GetGlobalEarlyRefreshCount() => _globalEarlyRefreshCount;
+        
     }
 }
