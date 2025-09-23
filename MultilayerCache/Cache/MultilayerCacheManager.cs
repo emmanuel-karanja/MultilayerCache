@@ -1,7 +1,4 @@
-using System;
 using System.Collections.Concurrent;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace MultilayerCache.Cache
@@ -127,7 +124,7 @@ namespace MultilayerCache.Cache
                     {
                         _logger.LogDebug("Cache hit at layer {Layer} for key {Key}", i, key);
 
-                        // Promote to higher cache layers
+                        // Bubble up changes to higher cache layers
                         for (int j = 0; j < i; j++)
                         {
                             try
@@ -139,7 +136,8 @@ namespace MultilayerCache.Cache
                                 _logger.LogWarning(ex, "Failed to promote key {Key} to layer {Layer}", key, j);
                             }
                         }
-
+                         // TODO: (Look at how this could be made better if it's a problem. For now
+                         // Fire and Forget trigger early refresh,
                         TriggerEarlyRefresh(key);
                         return value;
                     }
@@ -150,7 +148,8 @@ namespace MultilayerCache.Cache
                 }
             }
 
-            // Request coalescing using Lazy<Task>
+            // Request coalescing using Lazy<Task>, Thundering Herd mitigation
+            //Prevents multiple calls to the loader for the same key
             var lazyTask = _inflight.GetOrAdd(key, k =>
                 new Lazy<Task<TValue>>(async () =>
                 {
@@ -177,7 +176,8 @@ namespace MultilayerCache.Cache
                     {
                         _inflight.TryRemove(k, out _);
                     }
-                }, LazyThreadSafetyMode.ExecutionAndPublication)
+                }, LazyThreadSafetyMode.ExecutionAndPublication) //Only one thread runs the initializer. 
+                // All other threads wait for the value. Once initialized, the same value is returned to all threads.
             );
 
             return await lazyTask.Value;
@@ -215,6 +215,9 @@ namespace MultilayerCache.Cache
                 if (timeSinceLastRefresh < _minRefreshInterval)
                     return;
 
+                //initiate the refresh background task
+                // TODO: Batch such requests together and do a single fetch and jitter TTLs to prevent them
+                //expiring at the same time. Configure, configure, configure it seems
                 _ = Task.Run(async () =>
                 {
                     if (!await _earlyRefreshConcurrencySemaphore.WaitAsync(0))
