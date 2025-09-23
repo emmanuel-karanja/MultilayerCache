@@ -1,60 +1,88 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
-/** Manages Multiple Layers of This e.g. Top Layer could be the InMemory, and second layer could be Redis
- and so on*/
 namespace MultilayerCache.Cache
 {
+    // Multilayer cache manager
     public class MultilayerCacheManager<TKey, TValue>
     {
         private readonly ICache<TKey, TValue>[] _layers;
+        private readonly Func<TKey, Task<TValue>> _loaderFunction;
+        private readonly ILogger _logger;
+        private readonly IWritePolicy<TKey, TValue> _writePolicy;
 
-        public MultilayerCacheManager(params ICache<TKey, TValue>[] layers)
+        public MultilayerCacheManager(
+            ICache<TKey, TValue>[] layers,
+            Func<TKey, Task<TValue>> loaderFunction,
+            ILogger logger,
+            IWritePolicy<TKey, TValue>? writePolicy = null,
+            TimeSpan? defaultTtl = null)
         {
-            _layers = layers;
+            _layers = layers ?? throw new ArgumentNullException(nameof(layers));
+            _loaderFunction = loaderFunction ?? throw new ArgumentNullException(nameof(loaderFunction));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+            // Default TTL for write-through policy
+            var ttl = defaultTtl ?? TimeSpan.FromMinutes(5);
+            _writePolicy = writePolicy ?? new WriteThroughPolicy<TKey, TValue>(ttl);
         }
 
-        public void Set(TKey key, TValue value, TimeSpan ttl)
+        // Get or add a value
+        public async Task<TValue> GetOrAddAsync(TKey key)
         {
-            foreach (var layer in _layers)
-                layer.Set(key, value, ttl);
-        }
-
-        public bool TryGet(TKey key, out TValue value)
-        {
+            // 1. Check all layers
             for (int i = 0; i < _layers.Length; i++)
             {
-                if (_layers[i].TryGet(key, out value))
+                try
                 {
-                    // Refresh upper layers
-                    for (int j = 0; j < i; j++)
-                        _layers[j].Set(key, value, TimeSpan.FromMinutes(5));
-                    return true;
+                    var (found, value) = await _layers[i].TryGetAsync(key);
+                    if (found)
+                    {
+                        _logger.LogDebug("Cache hit at layer {Layer} for key {Key}", i, key);
+
+                        // Promote to upper layers
+                        for (int j = 0; j < i; j++)
+                        {
+                            try
+                            {
+                                await _layers[j].SetAsync(key, value, TimeSpan.FromMinutes(5));
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to promote key {Key} to layer {Layer}", key, j);
+                            }
+                        }
+
+                        return value;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error accessing layer {Layer} for key {Key}", i, key);
                 }
             }
-            value = default;
-            return false;
+
+            // 2. Load via loader function
+            TValue loadedValue = await _loaderFunction(key);
+            _logger.LogDebug("Cache miss for key {Key}, loaded via loader function", key);
+
+            // 3. Write to all layers via policy
+            await _writePolicy.WriteAsync(key, loadedValue, _layers, _logger);
+
+            return loadedValue;
         }
 
-        public async Task SetAsync(TKey key, TValue value, TimeSpan ttl)
+        // Optional synchronous wrapper
+        public TValue GetOrAdd(TKey key)
         {
-            foreach (var layer in _layers)
-                await layer.SetAsync(key, value, ttl);
+            return GetOrAddAsync(key).GetAwaiter().GetResult();
         }
 
-        public async Task<(bool found, TValue value)> TryGetAsync(TKey key)
+        // Direct set using write policy
+        public Task SetAsync(TKey key, TValue value)
         {
-            for (int i = 0; i < _layers.Length; i++)
-            {
-                var (found, value) = await _layers[i].TryGetAsync(key);
-                if (found)
-                {
-                    for (int j = 0; j < i; j++)
-                        await _layers[j].SetAsync(key, value, TimeSpan.FromMinutes(5));
-                    return (true, value);
-                }
-            }
-            return (false, default);
+            return _writePolicy.WriteAsync(key, value, _layers, _logger);
         }
     }
 }

@@ -1,7 +1,3 @@
-using System;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Prometheus.Client;
 using Prometheus.Client.Collectors;
 using MultilayerCache.Cache;
 using MultilayerCache.Metrics;

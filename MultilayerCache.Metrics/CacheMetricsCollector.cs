@@ -1,7 +1,4 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 using MultilayerCache.Cache;
 using Google.Protobuf;
@@ -76,6 +73,7 @@ namespace MultilayerCache.Metrics
             {
                 // Example: total hits + misses as "item count"
                 _l1Items.Set(_l1Cache.Metrics.Hits + _l1Cache.Metrics.Misses);
+                _logger.LogInformation("Logging");
             }
             catch (Exception ex)
             {
