@@ -20,22 +20,19 @@ class Program
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .Build();
 
-        // --- Bind CacheOptions ---
+        // --- Configure Serilog first so it can capture startup logs ---
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Console(outputTemplate: config["Logging:OutputTemplate"])
+            .CreateLogger();
+
+        // --- Bind CacheOptions and set up DI ---
         var services = new ServiceCollection();
         services.Configure<CacheOptions>(config.GetSection("Cache"));
         services.AddLogging(builder => builder.AddSerilog());
 
-        // Build provider to use options + logging
         using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<CacheOptions>>().Value;
-
-        // --- Configure Serilog ---
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
-            .WriteTo.Console(
-                outputTemplate: config["Logging:OutputTemplate"])
-            .CreateLogger();
-
         var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
         var cacheLogger = loggerFactory.CreateLogger("CacheDemo");
 
@@ -60,6 +57,7 @@ class Program
             });
         }
 
+        // Create cache manager with default persistent-store writer (logs warning if not overridden)
         var cache = new MultilayerCacheManager<string, User>(
             new ICache<string, User>[] { memoryCache, redisCache },
             LoaderFunction,

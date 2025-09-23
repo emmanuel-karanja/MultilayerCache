@@ -4,34 +4,49 @@ using Microsoft.Extensions.Logging;
 
 namespace MultilayerCache.Cache
 {
-    // Multilayer cache manager
+    /// <summary>
+    /// Manages multi-layer caching. Supports pluggable write policies and a loader function.
+    /// Now supports an optional persistent store writer delegate.
+    /// </summary>
     public class MultilayerCacheManager<TKey, TValue>
     {
         private readonly ICache<TKey, TValue>[] _layers;
         private readonly Func<TKey, Task<TValue>> _loaderFunction;
         private readonly ILogger _logger;
         private readonly IWritePolicy<TKey, TValue> _writePolicy;
+        private readonly Func<TKey, TValue, Task>? _persistentStoreWriter;
 
         public MultilayerCacheManager(
             ICache<TKey, TValue>[] layers,
             Func<TKey, Task<TValue>> loaderFunction,
             ILogger logger,
             IWritePolicy<TKey, TValue>? writePolicy = null,
-            TimeSpan? defaultTtl = null)
+            TimeSpan? defaultTtl = null,
+            Func<TKey, TValue, Task>? persistentStoreWriter = null)
         {
             _layers = layers ?? throw new ArgumentNullException(nameof(layers));
             _loaderFunction = loaderFunction ?? throw new ArgumentNullException(nameof(loaderFunction));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            // Default TTL for write-through policy
             var ttl = defaultTtl ?? TimeSpan.FromMinutes(5);
             _writePolicy = writePolicy ?? new WriteThroughPolicy<TKey, TValue>(ttl);
+
+             // Default writer: logs a warning but does nothing
+            _persistentStoreWriter = persistentStoreWriter ?? ((key, value) =>
+            {
+                _logger.LogWarning(
+                    "⚠ Persistent store writer not provided. Key {Key} was written to caches but NOT persisted.",
+                    key);
+                return Task.CompletedTask;
+            });
         }
 
-        // Get or add a value
+        /// <summary>
+        /// Get a value from the cache or load it if not present.
+        /// </summary>
         public async Task<TValue> GetOrAddAsync(TKey key)
         {
-            // 1. Check all layers
+            // 1. Check all cache layers
             for (int i = 0; i < _layers.Length; i++)
             {
                 try
@@ -41,7 +56,7 @@ namespace MultilayerCache.Cache
                     {
                         _logger.LogDebug("Cache hit at layer {Layer} for key {Key}", i, key);
 
-                        // Promote to upper layers
+                        // Promote to higher layers if found deeper
                         for (int j = 0; j < i; j++)
                         {
                             try
@@ -63,26 +78,34 @@ namespace MultilayerCache.Cache
                 }
             }
 
-            // 2. Load via loader function
+            // 2. Cache miss → use loader function
             TValue loadedValue = await _loaderFunction(key);
             _logger.LogDebug("Cache miss for key {Key}, loaded via loader function", key);
 
-            // 3. Write to all layers via policy
-            await _writePolicy.WriteAsync(key, loadedValue, _layers, _logger);
+            // 3. Write to cache layers and persistent store
+            if (_writePolicy is IWritePolicy<TKey, TValue> advancedPolicy)
+            {
+                await advancedPolicy.WriteAsync(key, loadedValue, _layers, _logger, _persistentStoreWriter);
+            }
+            else
+            {
+                await _writePolicy.WriteAsync(key, loadedValue, _layers, _logger, _persistentStoreWriter);
+            }
 
             return loadedValue;
         }
 
-        // Optional synchronous wrapper
-        public TValue GetOrAdd(TKey key)
-        {
-            return GetOrAddAsync(key).GetAwaiter().GetResult();
-        }
+        /// <summary>
+        /// Synchronous wrapper around GetOrAddAsync.
+        /// </summary>
+        public TValue GetOrAdd(TKey key) => GetOrAddAsync(key).GetAwaiter().GetResult();
 
-        // Direct set using write policy
+        /// <summary>
+        /// Directly set a value using the write policy.
+        /// </summary>
         public Task SetAsync(TKey key, TValue value)
         {
-            return _writePolicy.WriteAsync(key, value, _layers, _logger);
+            return _writePolicy.WriteAsync(key, value, _layers, _logger, _persistentStoreWriter);
         }
     }
 }
