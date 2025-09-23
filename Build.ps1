@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-Automates dependency setup, .proto compilation, build, and starting Redis for the MultilayerCache solution.
+Automates dependency setup, .proto compilation, clean, restore, build, and runs tests for the MultilayerCache solution.
 #>
 
 param(
     [switch]$Clean
 )
 
-$SolutionRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProtosFolder = Join-Path $SolutionRoot "MultilayerCache.Demo\Protos"
+$SolutionRoot    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProtosFolder    = Join-Path $SolutionRoot "MultilayerCache.Demo\Protos"
 $GeneratedFolder = Join-Path $SolutionRoot "MultilayerCache.Demo\Generated"
 
 # --- Ensure protoc exists ---
@@ -58,7 +58,8 @@ function Ensure-Protoc {
 # --- Clean bin/obj folders ---
 function Clean-Projects {
     Write-Host "Cleaning bin and obj folders..."
-    Get-ChildItem -Path $SolutionRoot -Recurse -Include bin,obj | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $SolutionRoot -Recurse -Include bin,obj |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # --- Compile .proto files ---
@@ -84,42 +85,19 @@ function Compile-Protos {
 # --- Restore NuGet packages ---
 function Restore-Packages {
     Write-Host "Restoring NuGet packages..."
-    dotnet restore $SolutionRoot\MultilayerCache.sln
+    dotnet restore "$SolutionRoot\MultilayerCache.sln"
 }
 
 # --- Build all projects ---
 function Build-Projects {
     Write-Host "Building all projects..."
-    dotnet build $SolutionRoot\MultilayerCache.sln -c Release
+    dotnet build "$SolutionRoot\MultilayerCache.sln" -c Release
 }
 
-# --- Start Redis via Docker Compose ---
-function Start-Redis {
-    Write-Host "Starting Redis container via Docker Compose..."
-    docker-compose -f "$SolutionRoot\docker-compose.yml" up -d redis
-
-    # Wait for Redis to be ready
-    $maxAttempts = 10
-    $attempt = 0
-    $ready = $false
-    while (-not $ready -and $attempt -lt $maxAttempts) {
-        try {
-            $pong = docker exec redis redis-cli ping
-            if ($pong -eq "PONG") {
-                $ready = $true
-                Write-Host "Redis is ready."
-            }
-        } catch {
-            Write-Host "Waiting for Redis..."
-            Start-Sleep -Seconds 2
-        }
-        $attempt++
-    }
-
-    if (-not $ready) {
-        Write-Error "Redis did not start in time. Exiting."
-        exit 1
-    }
+# --- Run all tests ---
+function Run-Tests {
+    Write-Host "Running tests..."
+    dotnet test "$SolutionRoot\MultilayerCache.Tests\MultilayerCache.Tests.csproj" -c Release --verbosity normal
 }
 
 # --- MAIN ---
@@ -130,6 +108,6 @@ if ($Clean) { Clean-Projects }
 Compile-Protos
 Restore-Packages
 Build-Projects
-Start-Redis
+Run-Tests
 
-Write-Host "Build completed and Redis is running."
+Write-Host "✅ Build and tests completed successfully."

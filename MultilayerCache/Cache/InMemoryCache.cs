@@ -38,11 +38,11 @@ namespace MultilayerCache.Cache
                     value = item.Value;
                     return true;
                 }
-
+               // Remove if exprired
                 _cache.TryRemove(key, out _);
                 _logger.LogDebug("Cache expired for key {Key}, removed", key);
             }
-
+            // Not in Cache
             Metrics.IncrementMiss();
             _logger.LogDebug("Cache miss for key {Key}", key);
             value = default!;

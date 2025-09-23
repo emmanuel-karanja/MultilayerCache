@@ -11,6 +11,8 @@ namespace MultilayerCache.Config
 
     public class RedisOptions
     {
-        public string ConnectionString { get; set; } = string.Empty;
+        public string Host { get; set; } = "localhost";
+        public int Port { get; set; } = 6379;
+        public string ConnectionString => $"{Host}:{Port}";
     }
 }

@@ -1,9 +1,8 @@
-version: "3.9"
 
 services:
   redis:
     image: redis:7
-    container_name: redis
+    container_name: redis_cache
     command: ["redis-server", "--protected-mode", "no"]
     ports:
-      - "6379:6379"
+      - "6800:6379"   # HostPort:ContainerPort (host 6800 → container 6379)

@@ -14,6 +14,7 @@ namespace MultilayerCache.Cache
         private readonly ConnectionMultiplexer _redis;
         private readonly ILogger _logger;
 
+        public CacheMetrics Metrics { get; } = new();
         public RedisCache(string connectionString, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
