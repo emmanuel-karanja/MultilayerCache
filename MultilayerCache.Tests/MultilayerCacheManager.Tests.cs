@@ -18,7 +18,7 @@ public class MultilayerCacheManagerFullTests
 
         public TestWritePolicy(TimeSpan ttl) => DefaultTtl = ttl;
 
-        public Task WriteAsync(TKey key, TValue value, ICache<TKey, TValue>[] layers, ILogger logger, Func<TKey, TValue, Task> persistentStoreWriter)
+        public Task WriteAsync(TKey key, TValue value, ICache<TKey, TValue>[] layers, ILogger logger, Func<TKey, TValue, Task> persistentStoreWriter,TimeSpan? ttl)
         {
             Written.Add((key, value));
             return Task.CompletedTask;
