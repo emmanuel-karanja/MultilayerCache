@@ -88,7 +88,7 @@ Caching is critical for improving performance and scalability in modern systems.
 This approach ensures that your caching strategy is **systematic, scalable, and maintainable**, minimizing stale data while maximizing performance.
 # MultilayerCache
 
-**MultilayerCache** is a .NET solution implementing a multi-layer caching system using both in-memory and Redis backends with Protocol Buffers serialization. This project includes automation scripts for dependency setup, .proto compilation, build, test, and Docker integration.
+**MultilayerCache** is a .NET solution implementing the PICUS multi-layer caching system using both in-memory and Redis backends with Protocol Buffers serialization. This project includes automation scripts for dependency setup, .proto compilation, build, test, and Docker integration.
 
 ---
 
