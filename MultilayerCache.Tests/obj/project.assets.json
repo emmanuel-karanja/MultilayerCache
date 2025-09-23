@@ -2,6 +2,18 @@
   "version": 3,
   "targets": {
     "net8.0": {
+      "Ben.Demystifier/0.4.1": {
+        "type": "package",
+        "dependencies": {
+          "System.Reflection.Metadata": "5.0.0"
+        },
+        "compile": {
+          "lib/netstandard2.1/Ben.Demystifier.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard2.1/Ben.Demystifier.dll": {}
+        }
+      },
       "Google.Protobuf/3.25.0": {
         "type": "package",
         "compile": {
@@ -977,6 +989,19 @@
           "lib/net7.0/Serilog.dll": {
             "related": ".xml"
           }
+        }
+      },
+      "Serilog.Enrichers.CallerInfo/1.0.6": {
+        "type": "package",
+        "dependencies": {
+          "Ben.Demystifier": "0.4.1",
+          "Serilog": "3.0.1"
+        },
+        "compile": {
+          "lib/net6.0/Serilog.Enrichers.CallerInfo.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0/Serilog.Enrichers.CallerInfo.dll": {}
         }
       },
       "Serilog.Extensions.Logging/8.0.0": {
@@ -2278,6 +2303,7 @@
           "MultilayerCache": "1.0.0",
           "Prometheus.Client": "6.1.0",
           "Serilog": "3.1.1",
+          "Serilog.Enrichers.CallerInfo": "1.0.6",
           "Serilog.Extensions.Logging": "8.0.0",
           "Serilog.Sinks.Console": "5.0.1",
           "StackExchange.Redis": "2.6.104",
@@ -2293,6 +2319,22 @@
     }
   },
   "libraries": {
+    "Ben.Demystifier/0.4.1": {
+      "sha512": "axFeEMfmEORy3ipAzOXG/lE+KcNptRbei3F0C4kQCdeiQtW+qJW90K5iIovITGrdLt8AjhNCwk5qLSX9/rFpoA==",
+      "type": "package",
+      "path": "ben.demystifier/0.4.1",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "ben.demystifier.0.4.1.nupkg.sha512",
+        "ben.demystifier.nuspec",
+        "icon.png",
+        "lib/net45/Ben.Demystifier.dll",
+        "lib/netstandard2.0/Ben.Demystifier.dll",
+        "lib/netstandard2.1/Ben.Demystifier.dll",
+        "readme.md"
+      ]
+    },
     "Google.Protobuf/3.25.0": {
       "sha512": "pIEkH1IqZV1iK8J5MYdG1kOyY0EoQLB6yEKvBq12RYNtvGXwCvnQg5zQsFmcqAEPtIZvSqPozIbUZaEd5a2gCg==",
       "type": "package",
@@ -3621,6 +3663,21 @@
         "lib/netstandard2.1/Serilog.xml",
         "serilog.3.1.1.nupkg.sha512",
         "serilog.nuspec"
+      ]
+    },
+    "Serilog.Enrichers.CallerInfo/1.0.6": {
+      "sha512": "9X7fy8y6opbLmffpBb8/kqzDADOvXENTFLRuoM1+ZF730bvJrnjMKaufjWvlycC2R2UQa3v0Bi1ZxFyxusVRXA==",
+      "type": "package",
+      "path": "serilog.enrichers.callerinfo/1.0.6",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "icon.png",
+        "lib/net6.0/Serilog.Enrichers.CallerInfo.dll",
+        "lib/netstandard2.0/Serilog.Enrichers.CallerInfo.dll",
+        "serilog.enrichers.callerinfo.1.0.6.nupkg.sha512",
+        "serilog.enrichers.callerinfo.nuspec"
       ]
     },
     "Serilog.Extensions.Logging/8.0.0": {

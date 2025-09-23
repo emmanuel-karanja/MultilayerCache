@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "q5jZCCzRWqA=",
+  "dgSpecHash": "FFzIgfYxE00=",
   "success": true,
   "projectFilePath": "C:\\Users\\ZBOOK\\MultilayerCache\\MultilayerCache.Demo\\MultilayerCache.Demo.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\ben.demystifier\\0.4.1\\ben.demystifier.0.4.1.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\google.protobuf\\3.25.0\\google.protobuf.3.25.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\google.protobuf.tools\\3.25.0\\google.protobuf.tools.3.25.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\microsoft.extensions.configuration\\8.0.0\\microsoft.extensions.configuration.8.0.0.nupkg.sha512",
@@ -29,10 +30,12 @@
     "C:\\Users\\ZBOOK\\.nuget\\packages\\prometheus.client\\6.1.0\\prometheus.client.6.1.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\prometheus.client.abstractions\\6.1.0\\prometheus.client.abstractions.6.1.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\serilog\\3.1.1\\serilog.3.1.1.nupkg.sha512",
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\serilog.enrichers.callerinfo\\1.0.6\\serilog.enrichers.callerinfo.1.0.6.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\serilog.extensions.logging\\8.0.0\\serilog.extensions.logging.8.0.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\serilog.sinks.console\\5.0.1\\serilog.sinks.console.5.0.1.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\stackexchange.redis\\2.6.104\\stackexchange.redis.2.6.104.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\system.io.pipelines\\5.0.1\\system.io.pipelines.5.0.1.nupkg.sha512",
+    "C:\\Users\\ZBOOK\\.nuget\\packages\\system.reflection.metadata\\5.0.0\\system.reflection.metadata.5.0.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\system.text.encodings.web\\8.0.0\\system.text.encodings.web.8.0.0.nupkg.sha512",
     "C:\\Users\\ZBOOK\\.nuget\\packages\\system.text.json\\8.0.0\\system.text.json.8.0.0.nupkg.sha512"
   ],
