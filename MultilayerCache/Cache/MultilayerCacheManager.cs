@@ -17,7 +17,7 @@ namespace MultilayerCache.Cache
         private readonly IWritePolicy<TKey, TValue> _writePolicy;
         private readonly Func<TKey, TValue, Task> _persistentStoreWriter;
 
-        // 👇 Tracks in-flight loader tasks for request coalescing
+        // Tracks in-flight loader tasks for request coalescing
         private readonly ConcurrentDictionary<TKey, Lazy<Task<TValue>>> _inflight =
             new ConcurrentDictionary<TKey, Lazy<Task<TValue>>>();
 
@@ -52,7 +52,7 @@ namespace MultilayerCache.Cache
         /// </summary>
         public async Task<TValue> GetOrAddAsync(TKey key)
         {
-            // 1️⃣ Try all cache layers first
+            // 1️. Try all cache layers first
             for (int i = 0; i < _layers.Length; i++)
             {
                 try
@@ -84,7 +84,7 @@ namespace MultilayerCache.Cache
                 }
             }
 
-            // 2️⃣ Request coalescing: ensure only one loader call per key
+            // 2️. Request coalescing: ensure only one loader call per key
             var lazyTask = _inflight.GetOrAdd(key, k =>
                 new Lazy<Task<TValue>>(async () =>
                 {
