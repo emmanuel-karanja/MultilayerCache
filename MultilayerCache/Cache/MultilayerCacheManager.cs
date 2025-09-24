@@ -160,42 +160,48 @@ namespace MultilayerCache.Cache
             // Request coalescing using Lazy<Task>, Thundering Herd mitigation
             // Prevents multiple calls to the loader for the same key
             var lazyTask = _inflight.GetOrAdd(key, k =>
-                new Lazy<Task<TValue>>(async () =>
+            new Lazy<Task<TValue>>(async () =>
+            {
+                try
                 {
+                    // Optional: introduce small per-key random delay to stagger simultaneous loads
+                    // This helps smooth thundering herd when multiple keys are missing at the same time
+                    var loadDelayMs = _random.Next(0, 500); // 0-500ms delay
+                    await Task.Delay(loadDelayMs);
+
+                    var sem = _keyLocks.GetOrAdd(k, _ => new SemaphoreSlim(1, 1));
+                    await sem.WaitAsync();
                     try
                     {
-                        var sem = _keyLocks.GetOrAdd(k, _ => new SemaphoreSlim(1, 1));
-                        await sem.WaitAsync();
-                        try
-                        {
-                            var loadedValue = await _loaderFunction(k);
-                            _logger.LogDebug("Cache miss for key {Key}, loaded via loader", k);
+                        var loadedValue = await _loaderFunction(k);
+                        _logger.LogDebug("Cache miss for key {Key}, loaded via loader", k);
 
-                            // Apply jitter to TTL when writing via write policy
-                            var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
-                            await _writePolicy.WriteAsync(k, loadedValue, _layers, _logger,
-                                async (writeKey, writeValue) =>
-                                {
-                                    foreach (var layer in _layers)
-                                        await layer.SetAsync(writeKey, writeValue, ttlWithJitter);
-                                });
+                        // Apply jitter to TTL when writing via write policy
+                        var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
 
-                            _lastRefresh[k] = DateTime.UtcNow;
+                        await _writePolicy.WriteAsync(k, loadedValue, _layers, _logger,
+                            async (writeKey, writeValue) =>
+                            {
+                                foreach (var layer in _layers)
+                                    await layer.SetAsync(writeKey, writeValue, ttlWithJitter);
+                            });
 
-                            return loadedValue;
-                        }
-                        finally
-                        {
-                            sem.Release();
-                        }
+                        // Record last refresh accurately (no jitter here)
+                        _lastRefresh[k] = DateTime.UtcNow;
+
+                        return loadedValue;
                     }
                     finally
                     {
-                        _inflight.TryRemove(k, out _);
+                        sem.Release();
                     }
-                }, LazyThreadSafetyMode.ExecutionAndPublication) // Only one thread runs the initializer. 
-                                                                // All other threads wait for the value. Once initialized, the same value is returned to all threads.
-            );
+                }
+                finally
+                {
+                    _inflight.TryRemove(k, out _);
+                }
+            }, LazyThreadSafetyMode.ExecutionAndPublication) // Only one thread runs the initializer
+        );
 
             return await lazyTask.Value;
         }
@@ -211,6 +217,7 @@ namespace MultilayerCache.Cache
         /// </summary>
        public Task SetAsync(TKey key, TValue value)
         {
+
             _lastRefresh[key] = DateTime.UtcNow;
 
             // Apply TTL jitter
@@ -239,11 +246,10 @@ namespace MultilayerCache.Cache
                 if (timeSinceLastRefresh < _minRefreshInterval)
                     return;
 
-                //initiate the refresh background task
-                // TODO: Batch such requests together and do a single fetch and jitter TTLs to prevent them
-                //expiring at the same time. Configure, configure, configure it seems
+                // Initiate background refresh
                 _ = Task.Run(async () =>
                 {
+                    // Enforce global concurrency limit
                     if (!await _earlyRefreshConcurrencySemaphore.WaitAsync(0))
                     {
                         _logger.LogDebug("Skipping early refresh for key {Key} due to concurrency limit", key);
@@ -252,19 +258,23 @@ namespace MultilayerCache.Cache
 
                     try
                     {
+                        // Introduce a small randomized delay before starting early refresh
+                        // This helps smooth out bursts of refresh tasks for keys that expire around the same time
+                        var randomDelayMs = _random.Next(0, 500); // 0-500ms delay
+                        await Task.Delay(randomDelayMs);
+
                         var refreshedValue = await _loaderFunction(key);
 
-                        // Apply jitter to TTL before writing
+                        // Apply TTL jitter before writing to cache layers
                         var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
                         await _writePolicy.WriteAsync(key, refreshedValue, _layers, _logger,
                             async (k, v) =>
                             {
-                                // Write to all layers with jittered TTL
                                 foreach (var layer in _layers)
                                     await layer.SetAsync(k, v, ttlWithJitter);
                             });
 
-                        // Update last refresh timestamp
+                        // Update last refresh timestamp (accurate, not jittered)
                         _lastRefresh[key] = DateTime.UtcNow;
 
                         var count = _earlyRefreshCounts.AddOrUpdate(key, 1, (_, c) => c + 1);
@@ -284,6 +294,7 @@ namespace MultilayerCache.Cache
                 });
             }
         }
+
 
         /// <summary>
         /// Adds random jitter (±10%) to the TTL to prevent cache stampede.
