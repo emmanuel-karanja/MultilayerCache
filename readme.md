@@ -293,6 +293,8 @@ var value = await cache.GetOrAddAsync(
     loader: userId => userRepository.LoadUserAsync(userId)
 );
 
+```
+
 ## License
 
 This project is licensed under the MIT License.
