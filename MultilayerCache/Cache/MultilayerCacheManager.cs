@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace MultilayerCache.Cache
 {
     /// <summary>
-    /// Manages multi-layer caching with the following advanced features:
+    /// Manages multi-layer caching with the following features:
     /// 
     /// 1. Multi-layer caching: Supports an array of cache layers (e.g., in-memory, Redis) with automatic promotion
     ///    of frequently accessed items to higher (faster) layers.
@@ -32,7 +32,7 @@ namespace MultilayerCache.Cache
     /// 
     /// Designed for read-heavy systems where caching and early refresh reduce latency and persistent store load.
     /// </summary>
-    public class MultilayerCacheManager<TKey, TValue>
+    public class MultilayerCacheManager<TKey, TValue> : IMultilayerCacheManager<TKey, TValue>
         where TKey : notnull
     {
         // Array of cache layers (e.g., memory, Redis)
@@ -130,12 +130,12 @@ namespace MultilayerCache.Cache
                     {
                         _logger.LogDebug("Cache hit at layer {Layer} for key {Key}", i, key);
 
-                        // Bubble up changes to higher cache layers
+                        // Prmote the changes up to higher cache layers
                         for (int j = 0; j < i; j++)
                         {
                             try
                             {
-                                // add jitter to the TTL 
+                                // add jitter to the TTL , different jitter amounts for each layer
                                 var ttlWithJitter = ApplyTtlJitter(_writePolicy.DefaultTtl);
                                 await _layers[j].SetAsync(key, value, ttlWithJitter);
                             }

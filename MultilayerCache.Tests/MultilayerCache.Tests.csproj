@@ -25,7 +25,14 @@
     <PackageReference Include="Google.Protobuf" Version="3.25.0" />
     <PackageReference Include="StackExchange.Redis" Version="2.6.104" />
     <PackageReference Include="Moq" Version="4.20.72" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="OpenTelemetry" Version="1.10.0" />
+
+  <!-- Hosting integration for ASP.NET Core -->
+  <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.10.0" />
+
+  <!-- Use the latest beta for Prometheus exporter -->
+  <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.10.0-beta.1" />
   </ItemGroup>
 
 </Project>

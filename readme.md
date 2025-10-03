@@ -235,7 +235,122 @@ protoc --csharp_out=MultilayerCache/Cache --proto_path=MultilayerCache/Protos Mu
 
 > The generated C# classes (e.g., `User.cs`) should reside in `MultilayerCache/Cache`.
 
+# MultilayerCache – Concurrency and Latency Details
+
+## Semaphore Roles in GetOrAddAsync
+
+### 1. `_inflight` Dictionary with `Lazy<Task<TValue>>`
+
+* Ensures only one loader runs for a given key at a time.
+* Other requests for the same key will wait on the same `Task` instead of launching duplicate loaders.
+
+### 2. `_keyLocks`
+
+* Optional fine-grained lock for ultra-hot keys.
+* Ensures only one thread executes the actual loader call even if multiple arrive at the same moment.
+
+### 3. `_earlyRefreshConcurrencySemaphore`
+
+* Global limiter for background refresh tasks.
+* Prevents system overload by capping concurrent refreshes.
+
 ---
+
+## Why This Design Doesn’t Increase Latency
+
+The `GetOrAddAsync` method remains fast because:
+
+* **Cache hits** return immediately without waiting for refresh logic.
+* Refresh logic is **triggered inline but executed asynchronously** using fire-and-forget tasks.
+* The inline cost is trivial: time checks, last refresh comparisons, and at most a non-blocking `TryEnter` on the global semaphore.
+* These operations are **microsecond-level** and have negligible impact on request latency.
+
+### Background Task Usage
+
+* Background tasks are spawned only when conditions warrant (near TTL expiry, minimum refresh interval elapsed, concurrency slots available).
+* They run **outside the caller’s execution path**, meaning the caller doesn’t pay for loader latency during a hit.
+* This makes refresh **opportunistic**, keeping cache fresh without impacting response time.
+
+---
+
+## What this means for latency
+
+**Cache Hit Path:**
+
+* `GetOrAddAsync` returns immediately after a cache hit.
+* Caller isn’t blocked waiting for refresh.
+* Early refresh is fire-and-forget, only starting if conditions are right (close to TTL, min interval respected, concurrency slots free).
+* Impact on latency: negligible.
+
+  * Checks `_lastRefresh`
+  * A couple of time comparisons
+  * Maybe a `TryEnter` on the global semaphore
+  * All microsecond-level overhead.
+
+**Cold Miss Path:**
+
+* Only case where caller waits is when **no cache layer has the value**.
+* Even then, only the **first caller** pays the loader cost.
+* Other callers piggyback on the in-flight `Task`.
+
+---
+
+## ASCII Timing Diagrams
+
+### Cache Hit + Early Refresh
+
+```
+Client calls GetOrAddAsync("K") ──────────┐
+                                          │
+[Cache Hit]                               │
+   │                                      │
+   ▼                                      │
+ Return value immediately ◄───────────────┘
+   │
+   │   In parallel...
+   │
+   └──► TriggerEarlyRefresh("K")
+           │
+           ├─ Checks TTL / interval
+           │
+           ├─ If eligible: starts Task.Run
+           │       │
+           │       └── Calls loader in background
+           │             Updates cache layers
+           │             Updates _lastRefresh
+           │
+           └─ If not eligible: no-op
+```
+
+### Cold Miss Path
+
+```
+Client calls GetOrAddAsync("K") ──────────┐
+                                          │
+[Cache Miss in all layers]                │
+   │                                      │
+   ▼                                      │
+Check _inflight for key                   │
+   │                                      │
+   ├─ If not present: create Lazy<Task>   │
+   │       │                              │
+   │       └── Call loader (awaited)      │
+   │             ▼                        │
+   │          Value returned              │
+   │          Cache updated               │
+   │          _lastRefresh updated        │
+   │                                      │
+   └─ If present: await existing Task ◄───┘
+
+Return value once loader finishes
+```
+
+**So:**
+
+* Cache hits stay fast → user gets data instantly.
+* Refresh is async and opportunistic → user never pays refresh cost.
+* Cold misses are coordinated → only one caller per key pays loader cost.
+
 
 ## License
 

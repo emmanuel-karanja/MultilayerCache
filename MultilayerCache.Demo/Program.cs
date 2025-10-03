@@ -1,156 +1,154 @@
-﻿using MultilayerCache.Cache;
-using MultilayerCache.Demo;
-using MultilayerCache.Config;
+﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
+using MultilayerCache.Cache;
+using MultilayerCache.Config;
 using Serilog;
 using Serilog.Context;
+using OpenTelemetry.Trace;
+using Microsoft.Extensions.Options;
+using MultilayerCache.Demo;
+using OpenTelemetry.Metrics;
 
-// --- Determine project root and ensure appsettings.json is loaded safely ---
-var projectRoot = Path.Combine(AppContext.BaseDirectory, "..", "..", "..");
-var configPath = Path.Combine(projectRoot, "appsettings.json");
-if (!File.Exists(configPath))
-{
-    Console.WriteLine($"ERROR: Configuration file not found at {configPath}");
-    return;
-}
+var builder = WebApplication.CreateBuilder(args);
 
-var config = new ConfigurationBuilder()
-    .SetBasePath(projectRoot)
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddEnvironmentVariables()
-    .Build();
+// --- Load configuration ---
+builder.Configuration
+       .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+       .AddEnvironmentVariables();
 
 // --- Configure Serilog ---
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .Enrich.WithProperty("ServiceName", "MultilayerCache.Demo")
+    .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
-    .WriteTo.Console(
-        outputTemplate: config["Logging:OutputTemplate"]
-                        ?? "[{Timestamp:HH:mm:ss} {Level:u3}] {ServiceName} {ClassName} {Message:lj}{NewLine}{Exception}"
-    )
     .CreateLogger();
 
-try
+builder.Host.UseSerilog();
+
+// --- Configure OpenTelemetry ---
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracerProviderBuilder =>
+    {
+        tracerProviderBuilder
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddSource("MultilayerCache.Demo")
+            .SetSampler(new AlwaysOnSampler())
+            .AddConsoleExporter();
+    })
+    .WithMetrics(metricsProviderBuilder =>
+    {
+        metricsProviderBuilder
+            .AddMeter("MultilayerCache.Instrumentation")
+            .AddRuntimeInstrumentation()         // ✅ now recognized
+            .AddHttpClientInstrumentation()
+            .AddConsoleExporter();
+    });
+
+// --- Configure options ---
+builder.Services.Configure<CacheOptions>(builder.Configuration.GetSection("Cache"));
+builder.Services.Configure<MultilayerCacheOptions>(builder.Configuration.GetSection("MultilayerCache"));
+builder.Services.Configure<RedisResilienceOptions>(builder.Configuration.GetSection("RedisResilience"));
+
+// --- Register caches ---
+builder.Services.AddSingleton<InMemoryCache<string, User>>(sp =>
 {
-    Log.Information("Starting MultilayerCache demo...");
+    var opts = sp.GetRequiredService<IOptions<CacheOptions>>().Value;
+    var logger = sp.GetRequiredService<ILogger<InMemoryCache<string, User>>>();
+    return new InMemoryCache<string, User>(
+        TimeSpan.FromSeconds(opts.MemoryCacheCleanupIntervalSeconds),
+        logger
+    );
+});
 
-    // --- Configure DI ---
-    var services = new ServiceCollection();
-    services.Configure<CacheOptions>(config.GetSection("Cache"));
-    services.Configure<MultilayerCacheOptions>(config.GetSection("MultilayerCache"));
-    services.Configure<RedisResilienceOptions>(config.GetSection("RedisResilience"));
-    services.AddLogging(builder => builder.AddSerilog());
+builder.Services.AddSingleton<RedisCache<string, User>>(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<CacheOptions>>().Value;
+    var redisOpts = sp.GetRequiredService<IOptions<RedisResilienceOptions>>().Value;
+    var logger = sp.GetRequiredService<ILogger<RedisCache<string, User>>>();
+    return new RedisCache<string, User>(opts.Redis.ConnectionString, logger, redisOpts);
+});
 
-    using var provider = services.BuildServiceProvider();
-
-    var cacheOptions = provider.GetRequiredService<IOptions<CacheOptions>>().Value;
-    var mlCacheOptions = provider.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
-    var redisResilienceOptions = provider.GetRequiredService<IOptions<RedisResilienceOptions>>().Value;
-
-    var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
-    var cacheLogger = loggerFactory.CreateLogger("CacheDemo");
-
-    // --- Setup L1 InMemoryCache ---
-    var memoryCache = new InMemoryCache<string, User>(
-        TimeSpan.FromSeconds(cacheOptions.MemoryCacheCleanupIntervalSeconds),
-        cacheLogger);
-
-    // --- Setup L2 RedisCache with resilience ---
-    var redisConnection = cacheOptions.Redis.ConnectionString;
-    cacheLogger.LogInformation("Connecting to Redis at {RedisConnection}", redisConnection);
-
-    // Declare and initialize in one step to avoid nullable warnings
-    var redisCache = new RedisCache<string, User>(
-        redisConnection,
-        cacheLogger,
-        redisResilienceOptions);
-
-    // Loader function for cache misses
-    async Task<User> LoaderFunction(string key)
+// --- Register loader ---
+builder.Services.AddSingleton<Func<string, Task<User>>>(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+    return async key =>
     {
         using (LogContext.PushProperty("ClassName", "LoaderFunction"))
         {
-            cacheLogger.LogWarning("Loader invoked for missing key {Key}", key);
+            logger.LogWarning("Loader invoked for missing key {Key}", key);
         }
-        return await Task.FromResult(new User
+        await Task.Delay(5); // simulate DB/network latency
+        return new User
         {
             Id = -1,
             Name = "LoadedFromSource",
             Email = "loaded@example.com"
-        });
-    }
+        };
+    };
+});
 
-    // --- Multilayer cache manager with L1 + L2 ---
-   var cache = new MultilayerCacheManager<string, User>(
-        new ICache<string, User>[] { memoryCache, redisCache }, // ✅ explicit type
-        LoaderFunction,
-        cacheLogger,
-        defaultTtl: mlCacheOptions.DefaultTtl,
-        earlyRefreshThreshold: mlCacheOptions.EarlyRefreshThreshold,
-        minRefreshInterval: mlCacheOptions.MinRefreshInterval,
-        maxConcurrentEarlyRefreshes: mlCacheOptions.MaxConcurrentEarlyRefreshes
+// --- Multilayer cache manager ---
+builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
+{
+    var memCache = sp.GetRequiredService<InMemoryCache<string, User>>();
+    var redisCache = sp.GetRequiredService<RedisCache<string, User>>();
+    var loader = sp.GetRequiredService<Func<string, Task<User>>>();
+    var logger = sp.GetRequiredService<ILogger<MultilayerCacheManager<string, User>>>();
+    var opts = sp.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
+
+    return new MultilayerCacheManager<string, User>(
+        new ICache<string, User>[] { memCache, redisCache },
+        loader,
+        logger,
+        defaultTtl: opts.DefaultTtl,
+        earlyRefreshThreshold: opts.EarlyRefreshThreshold,
+        minRefreshInterval: opts.MinRefreshInterval,
+        maxConcurrentEarlyRefreshes: opts.MaxConcurrentEarlyRefreshes
     );
+});
 
+// --- Instrumentation decorator ---
+builder.Services.AddSingleton<InstrumentedCacheManagerDecorator<string, User>>(sp =>
+{
+    var baseCache = sp.GetRequiredService<MultilayerCacheManager<string, User>>();
+    return new InstrumentedCacheManagerDecorator<string, User>(baseCache);
+});
 
-    // --- Demo run ---
-    var random = new Random();
-    int redisFallbacks = 0;
-
-    using (LogContext.PushProperty("ClassName", "Program"))
+// --- Controllers & Swagger ---
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
     {
-        Log.Information("Caching {TotalItems:N0} users...", cacheOptions.TotalItems);
+        Title = "MultilayerCache API",
+        Version = "v1",
+        Description = "API demonstrating MultilayerCache with OpenTelemetry and Serilog."
+    });
+});
 
-        for (int i = 1; i <= cacheOptions.TotalItems; i++)
-        {
-            var user = new User { Id = i, Name = $"User {i}", Email = $"user{i}@example.com" };
-            await cache.SetAsync($"user:{i}", user);
+var app = builder.Build();
 
-            if (i % 1000 == 0)
-                Log.Information("{Count:N0} users cached...", i);
-        }
+// --- Middleware ---
+app.UseSerilogRequestLogging();
 
-        Log.Information("✅ All users cached.");
-        Log.Information("Accessing 500 random users immediately (L1 hits expected)...");
-
-        for (int j = 0; j < 500; j++)
-        {
-            int id = random.Next(1, cacheOptions.TotalItems + 1);
-            await cache.GetOrAddAsync($"user:{id}");
-        }
-
-        Log.Information("Waiting {Wait}s for memory cache to expire...", cacheOptions.WaitForExpirySeconds);
-        await Task.Delay(TimeSpan.FromSeconds(cacheOptions.WaitForExpirySeconds));
-
-        Log.Information("Accessing 2000 random users after memory expiration (L2 hits expected)...");
-        for (int j = 0; j < 2000; j++)
-        {
-            int id = random.Next(1, cacheOptions.TotalItems + 1);
-            var user = await cache.GetOrAddAsync($"user:{id}");
-            if (user != null) redisFallbacks++;
-        }
-
-        Log.Information("Accessing 500 random *non-existent* users...");
-        for (int j = 0; j < 500; j++)
-        {
-            int fakeId = cacheOptions.TotalItems + random.Next(1, 1000);
-            await cache.GetOrAddAsync($"user:{fakeId}");
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("---- Metrics ----");
-        Console.WriteLine($"Memory Cache (L1) Hits: {memoryCache.Metrics.Hits}, Misses: {memoryCache.Metrics.Misses}");
-        Console.WriteLine($"Redis Cache (L2) Approx Hits (fallbacks after L1 miss): {redisFallbacks}");
-    }
-}
-catch (Exception ex)
+if (app.Environment.IsDevelopment())
 {
-    Log.Fatal(ex, "Unhandled exception in MultilayerCache demo");
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "MultilayerCache API v1");
+        c.RoutePrefix = string.Empty; // optional: Swagger at root
+    });
 }
-finally
-{
-    Log.CloseAndFlush();
-}
+
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+
+app.Run();

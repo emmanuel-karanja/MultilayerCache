@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
@@ -10,11 +10,20 @@
     <!-- Protobuf for serialization -->
     <PackageReference Include="Google.Protobuf" Version="3.25.0" />
     <PackageReference Include="Google.Protobuf.Tools" Version="3.25.0" PrivateAssets="All" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
     <PackageReference Include="Polly" Version="8.6.3" />
     
     <!-- Redis support -->
     <PackageReference Include="StackExchange.Redis" Version="2.6.102" />
+   <!-- Core OpenTelemetry SDK -->
+  <PackageReference Include="OpenTelemetry" Version="1.10.0" />
+
+  <!-- Hosting integration for ASP.NET Core -->
+  <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.10.0" />
+
+  <!-- Use the latest beta for Prometheus exporter -->
+  <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.10.0-beta.1" />
+
   </ItemGroup>
 
 </Project>
