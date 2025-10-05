@@ -16,6 +16,11 @@ using Microsoft.AspNetCore.Http;
 using NBomber.CSharp;
 using NBomber.Contracts;
 using System;
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -150,21 +155,6 @@ var cacheManager = app.Services.GetRequiredService<MultilayerCacheManager<string
 await cacheManager.SetAsync("user:1", new User { Id = 1, Name = "Preloaded1", Email = "user1@example.com" });
 await cacheManager.SetAsync("user:2", new User { Id = 2, Name = "Preloaded2", Email = "user2@example.com" });
 
-// --- NBomber scenario for load testing ---
-var random = new Random();
-
-var scenario = Scenario.Create("multilayer_cache_load_test", async context =>
-{
-    var key = $"user:{random.Next(1, 5)}";
-    var value = await cacheManager.GetOrAddAsync(key);
-    return Response.Ok(value);
-})
-.WithLoadSimulations(Simulation.KeepConstant(50, TimeSpan.FromMinutes(1)));
-
-// NBomber v6: Run synchronously
-var stats = NBomberRunner.RegisterScenarios(scenario).Run();
-Console.WriteLine($"NBomber test finished. Total OK requests: {stats.AllOkCount}");
-
 // --- Manual cache endpoints ---
 app.MapGet("/api/cache/{key}", async (string key) =>
 {
@@ -177,4 +167,63 @@ app.MapGet("/api/cache/{key}", async (string key) =>
     });
 });
 
-app.Run();
+// --- Optional metrics endpoint ---
+app.MapGet("/api/cache/metrics", () =>
+{
+    var snapshot = cacheManager.GetMetricsSnapshot(topN: 20);
+    return Results.Json(snapshot);
+});
+
+// --- Periodic metrics dump to JSON file ---
+var metricsFilePath = "cache_metrics.json";
+var metricsDumpInterval = TimeSpan.FromSeconds(30);
+
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try
+        {
+            var snapshot = cacheManager.GetMetricsSnapshot(topN: 20);
+            var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Converters = { new JsonStringEnumConverter() }
+            });
+            await File.WriteAllTextAsync(metricsFilePath, json);
+            Console.WriteLine($"[Metrics] Dumped to {metricsFilePath} at {DateTime.Now}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Metrics] Failed to write metrics: {ex}");
+        }
+
+        await Task.Delay(metricsDumpInterval);
+    }
+});
+
+// --- Run NBomber in background ---
+var random = new Random();
+_ = Task.Run(() =>
+{
+    var scenario = Scenario.Create("multilayer_cache_load_test", async context =>
+    {
+        var key = $"user:{random.Next(1, 5000)}";
+        var value = await cacheManager.GetOrAddAsync(key);
+        return Response.Ok(value);
+    })
+    .WithLoadSimulations(Simulation.KeepConstant(50, TimeSpan.FromMinutes(1)));
+
+    var stats = NBomberRunner.RegisterScenarios(scenario).Run();
+    Console.WriteLine($"NBomber test finished. Total OK requests: {stats.AllOkCount}");
+});
+
+// --- Graceful shutdown ---
+Console.CancelKeyPress += (s, e) =>
+{
+    Console.WriteLine("Stopping web server...");
+    // NBomber finishes, web server stops
+};
+
+// --- Run web server ---
+await app.RunAsync();

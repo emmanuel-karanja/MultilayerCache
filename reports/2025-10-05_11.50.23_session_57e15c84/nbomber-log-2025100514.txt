@@ -1,0 +1,11 @@
+2025-10-05 14:50:26.342 +03:00 [INF] [ThreadId:24] NBomber 6.1.1 started a new session: 2025-10-05_11.50.23_session_57e15c84
+2025-10-05 14:50:26.422 +03:00 [INF] [ThreadId:24] NBomber started as single node
+2025-10-05 14:50:26.428 +03:00 [INF] [ThreadId:24] License validation....
+2025-10-05 14:50:26.429 +03:00 [WRN] [ThreadId:24] THIS VERSION IS FREE ONLY FOR PERSONAL USE. You can't use it for an organization.
+2025-10-05 14:50:26.577 +03:00 [INF] [ThreadId:24] Reports folder: C:\Users\ZBOOK\MultilayerCache\MultilayerCache.Demo\bin\Debug\net8.0\reports\2025-10-05_11.50.23_session_57e15c84
+2025-10-05 14:50:26.582 +03:00 [INF] [ThreadId:24] Plugins: no plugins were loaded
+2025-10-05 14:50:26.583 +03:00 [INF] [ThreadId:24] Reporting sinks: no reporting sinks were loaded
+2025-10-05 14:50:26.583 +03:00 [INF] [ThreadId:24] Starting init...
+2025-10-05 14:50:26.595 +03:00 [INF] [ThreadId:24] Target scenarios: multilayer_cache_load_test
+2025-10-05 14:50:26.598 +03:00 [INF] [ThreadId:24] Init finished
+2025-10-05 14:50:26.727 +03:00 [INF] [ThreadId:24] Starting bombing...
