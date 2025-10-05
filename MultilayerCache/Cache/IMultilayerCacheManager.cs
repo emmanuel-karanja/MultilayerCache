@@ -11,7 +11,7 @@ public interface IMultilayerCacheManager<TKey, TValue>
     /// <summary>
     /// Fetches a value from cache or loader asynchronously
     /// </summary>
-    Task<TValue> GetOrAddAsync(TKey key);
+    Task<TValue> GetOrAddAsync(TKey key,CancellationToken token);
 
     /// <summary>
     /// Fetches a value from cache or loader synchronously

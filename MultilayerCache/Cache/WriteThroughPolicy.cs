@@ -5,6 +5,7 @@ namespace MultilayerCache.Cache
     /// <summary>
     /// Implements a write-through caching policy.
     /// Writes data to all cache layers and a persistent store on every write.
+    /// Supports optional per-layer TTLs.
     /// </summary>
     public class WriteThroughPolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
         where TKey : notnull
@@ -25,32 +26,37 @@ namespace MultilayerCache.Cache
 
         /// <summary>
         /// Writes the value to all cache layers and the persistent store.
+        /// Supports per-layer TTLs.
         /// </summary>
         /// <param name="key">Cache key.</param>
         /// <param name="value">Value to cache and persist.</param>
         /// <param name="layers">Cache layers (e.g., in-memory, Redis).</param>
         /// <param name="logger">Logger for diagnostic messages.</param>
         /// <param name="persistentStoreWriter">Delegate to write to the persistent store.</param>
-        /// <param name="ttl">TTL with jitter</param>
+        /// <param name="ttls">Optional per-layer TTLs. Must match layers length if provided.</param>
         public async Task WriteAsync(
             TKey key,
             TValue value,
             ICache<TKey, TValue>[] layers,
             ILogger logger,
             Func<TKey, TValue, Task> persistentStoreWriter,
-            TimeSpan? ttl = null)
+            TimeSpan[]? ttls = null)
         {
+            if (ttls != null && ttls.Length != layers.Length)
+                throw new ArgumentException("ttls length must match layers length");
+
             // 1️. Write to all cache layers
-            foreach (var layer in layers)
+            for (int i = 0; i < layers.Length; i++)
             {
                 try
                 {
-                    await layer.SetAsync(key, value, ttl ??DefaultTtl);
-                    logger.LogDebug("Write-through wrote key {Key} to {Layer}", key, layer.GetType().Name);
+                    var ttl = ttls != null ? ttls[i] : DefaultTtl;
+                    await layers[i].SetAsync(key, value, ttl);
+                    logger.LogDebug("Write-through wrote key {Key} to layer {Layer}", key, layers[i].GetType().Name);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogWarning(ex, "Write-through failed for key {Key} in layer {Layer}", key, layer.GetType().Name);
+                    logger.LogWarning(ex, "Write-through failed for key {Key} in layer {Layer}", key, layers[i].GetType().Name);
                 }
             }
 

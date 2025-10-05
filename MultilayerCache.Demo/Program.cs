@@ -9,9 +9,9 @@ using MultilayerCache.Config;
 using Serilog;
 using Serilog.Context;
 using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 using Microsoft.Extensions.Options;
 using MultilayerCache.Demo;
-using OpenTelemetry.Metrics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,7 +43,7 @@ builder.Services.AddOpenTelemetry()
     {
         metricsProviderBuilder
             .AddMeter("MultilayerCache.Instrumentation")
-            .AddRuntimeInstrumentation()         // ✅ now recognized
+            .AddRuntimeInstrumentation()
             .AddHttpClientInstrumentation()
             .AddConsoleExporter();
     });
@@ -92,7 +92,7 @@ builder.Services.AddSingleton<Func<string, Task<User>>>(sp =>
     };
 });
 
-// --- Multilayer cache manager ---
+// --- Multilayer cache manager with telemetry hooks ---
 builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
 {
     var memCache = sp.GetRequiredService<InMemoryCache<string, User>>();
@@ -101,7 +101,7 @@ builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
     var logger = sp.GetRequiredService<ILogger<MultilayerCacheManager<string, User>>>();
     var opts = sp.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
 
-    return new MultilayerCacheManager<string, User>(
+    var cacheManager = new MultilayerCacheManager<string, User>(
         new ICache<string, User>[] { memCache, redisCache },
         loader,
         logger,
@@ -110,6 +110,27 @@ builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
         minRefreshInterval: opts.MinRefreshInterval,
         maxConcurrentEarlyRefreshes: opts.MaxConcurrentEarlyRefreshes
     );
+
+    // --- Telemetry hooks ---
+    cacheManager.OnCacheHit = key =>
+    {
+        logger.LogInformation("Cache HIT for key {Key}", key);
+        // TODO: increment custom metrics or OpenTelemetry counters
+    };
+
+    cacheManager.OnCacheMiss = key =>
+    {
+        logger.LogWarning("Cache MISS for key {Key}", key);
+        // TODO: increment custom metrics or OpenTelemetry counters
+    };
+
+    cacheManager.OnEarlyRefresh = key =>
+    {
+        logger.LogInformation("Early refresh triggered for key {Key}", key);
+        // TODO: increment custom metrics or OpenTelemetry counters
+    };
+
+    return cacheManager;
 });
 
 // --- Instrumentation decorator ---

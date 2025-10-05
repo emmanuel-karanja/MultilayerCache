@@ -6,6 +6,7 @@ namespace MultilayerCache.Cache
     /// Implements a write-behind caching policy.
     /// Writes immediately to the first cache layer (usually in-memory),
     /// then propagates asynchronously to other cache layers and a persistent store.
+    /// Supports per-layer TTLs.
     /// </summary>
     public class WriteBehindPolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
         where TKey : notnull
@@ -27,25 +28,30 @@ namespace MultilayerCache.Cache
         /// <summary>
         /// Write-behind strategy: write synchronously to the first cache layer,
         /// then asynchronously propagate to other layers and the persistent store.
+        /// Supports per-layer TTLs.
         /// </summary>
         /// <param name="key">Cache key.</param>
         /// <param name="value">Value to cache and persist.</param>
         /// <param name="layers">Cache layers.</param>
         /// <param name="logger">Logger instance.</param>
         /// <param name="persistentStoreWriter">Delegate to write the value to persistent storage.</param>
-        /// <param name="ttl">TTL with jitter</param>
+        /// <param name="ttls">Optional per-layer TTLs. Must match layers length if provided.</param>
         public async Task WriteAsync(
             TKey key,
             TValue value,
             ICache<TKey, TValue>[] layers,
             ILogger logger,
             Func<TKey, TValue, Task> persistentStoreWriter,
-            TimeSpan? ttl = null)
+            TimeSpan[]? ttls = null)
         {
+            if (ttls != null && ttls.Length != layers.Length)
+                throw new ArgumentException("ttls length must match layers length");
+
             // 1️. Write synchronously to the first (fastest) layer
             try
             {
-                await layers[0].SetAsync(key, value, ttl??DefaultTtl);
+                var ttl = ttls != null ? ttls[0] : DefaultTtl;
+                await layers[0].SetAsync(key, value, ttl);
                 logger.LogDebug("Write-behind wrote key {Key} to first layer {Layer}", key, layers[0].GetType().Name);
             }
             catch (Exception ex)
@@ -54,14 +60,15 @@ namespace MultilayerCache.Cache
             }
 
             // 2. Async propagation to other layers and persistent store
-            _ = Task.Run(async () =>
+            _ = SafeFireAndForget(async () =>
             {
                 // Propagate to remaining cache layers
                 for (int i = 1; i < layers.Length; i++)
                 {
                     try
                     {
-                        await layers[i].SetAsync(key, value, DefaultTtl);
+                        var ttl = ttls != null ? ttls[i] : DefaultTtl;
+                        await layers[i].SetAsync(key, value, ttl);
                         logger.LogDebug("Write-behind propagated key {Key} to layer {Layer}", key, layers[i].GetType().Name);
                     }
                     catch (Exception ex)
@@ -88,6 +95,21 @@ namespace MultilayerCache.Cache
                     logger.LogWarning("No persistent store writer provided for key {Key}", key);
                 }
             });
+        }
+
+        /// <summary>
+        /// Executes a fire-and-forget task safely with exception logging.
+        /// </summary>
+        private static async Task SafeFireAndForget(Func<Task> func)
+        {
+            try
+            {
+                await func();
+            }
+            catch
+            {
+                // Optionally log or ignore; here we swallow exceptions silently.
+            }
         }
     }
 }

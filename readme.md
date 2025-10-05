@@ -1,7 +1,6 @@
-
 # MultilayerCache
 
-**MultilayerCache** is a .NET solution implementing the PICUS multi-layer caching system using both in-memory and Redis backends with Protocol Buffers serialization. This project includes automation scripts for dependency setup, .proto compilation, build, test, and Docker integration.
+**MultilayerCache** is a .NET solution implementing the PICUS multi-layer caching system using both in-memory and Redis backends with Protocol Buffers serialization. This project includes automation scripts for dependency setup, .proto compilation, build, test, Docker integration, and OpenTelemetry hooks for metrics and tracing.
 
 ---
 
@@ -15,6 +14,7 @@
 * [Testing](#testing)
 * [Docker](#docker)
 * [Protobuf Compilation](#protobuf-compilation)
+* [Telemetry](#telemetry)
 * [License](#license)
 
 ---
@@ -22,7 +22,10 @@
 ## Features
 
 * Multi-layer caching with in-memory and Redis.
+* Per-layer TTL support.
 * Serialization using Protocol Buffers (Google.Protobuf).
+* Delegates for loader and persistent store writer functions.
+* OpenTelemetry hooks for metrics and tracing.
 * Unit tests with xUnit.
 * Automated build, restore, and Docker scripts.
 
@@ -41,7 +44,8 @@ MultilayerCache/
 │   │   ├── MultilayerCacheManager.cs
 │   │   ├── ProtobufSerializer.cs
 │   │   ├── RedisCache.cs
-│   │   
+│   │   ├── Policies/       # WriteThroughPolicy, WriteBehindPolicy, etc.
+│   │   └── Instrumentation/ # InstrumentedCacheManagerDecorator, metrics hooks
 │   └── Protos/             # Protocol Buffers .proto files
 ├── MultilayerCache.Demo/   # Demo project
 ├── MultilayerCache.Tests/  # Unit tests
@@ -80,8 +84,7 @@ dotnet restore MultilayerCache.sln
 
 ## Setup with Automation
 
-``` powershell
-
+```powershell
 git clone https://github.com/emmanuel-karanja/MultilayerCache.git
 cd MultilayerCache
 
@@ -89,9 +92,10 @@ cd MultilayerCache
 ./Run-Demo.ps1
 ./Run-MetricsDemo.ps1
 
-By default, all three options are run i.e. clean, build, docker image creation and running.
-
+# By default, all three options are run i.e. clean, build, docker image creation, and running.
 ```
+
+---
 
 ## Running the Solution
 
@@ -148,69 +152,75 @@ protoc --csharp_out=MultilayerCache/Cache --proto_path=MultilayerCache/Protos Mu
 
 > The generated C# classes (e.g., `User.cs`) should reside in `MultilayerCache/Cache`.
 
-# MultilayerCache – Concurrency and Latency Details
+---
 
-## Semaphore Roles in GetOrAddAsync
+## Telemetry
 
-### 1. `_inflight` Dictionary with `Lazy<Task<TValue>>`
+The project supports OpenTelemetry hooks for both metrics and tracing.
 
-* Ensures only one loader runs for a given key at a time.
-* Other requests for the same key will wait on the same `Task` instead of launching duplicate loaders.
+### Setup in ASP.NET Core Demo
 
-### 2. `_keyLocks`
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracerProviderBuilder =>
+    {
+        tracerProviderBuilder
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddSource("MultilayerCache.Demo")
+            .SetSampler(new AlwaysOnSampler())
+            .AddConsoleExporter();
+    })
+    .WithMetrics(metricsProviderBuilder =>
+    {
+        metricsProviderBuilder
+            .AddMeter("MultilayerCache.Instrumentation")
+            .AddRuntimeInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddConsoleExporter();
+    });
+```
 
-* Optional fine-grained lock for ultra-hot keys.
-* Ensures only one thread executes the actual loader call even if multiple arrive at the same moment.
+### Instrumented Cache Manager
 
-### 3. `_earlyRefreshConcurrencySemaphore`
+`InstrumentedCacheManagerDecorator` wraps the `MultilayerCacheManager` to automatically record metrics such as:
 
-* Global limiter for background refresh tasks.
-* Prevents system overload by capping concurrent refreshes.
+* Cache hits and misses per layer
+* Load latency
+* Write operations
+
+Telemetry hooks integrate seamlessly with Prometheus, OpenTelemetry collectors, or any configured exporters.
 
 ---
 
-## Why This Design Doesn’t Increase Latency
+## Concurrency and Latency Details
 
-The `GetOrAddAsync` method remains fast because:
+### Semaphore Roles in GetOrAddAsync
 
-* **Cache hits** return immediately without waiting for refresh logic.
-* Refresh logic is **triggered inline but executed asynchronously** using fire-and-forget tasks.
-* The inline cost is trivial: time checks, last refresh comparisons, and at most a non-blocking `TryEnter` on the global semaphore.
-* These operations are **microsecond-level** and have negligible impact on request latency.
+1. `_inflight` Dictionary with `Lazy<Task<TValue>>`
 
-### Background Task Usage
+* Ensures only one loader runs per key.
+* Other requests await the same Task.
 
-* Background tasks are spawned only when conditions warrant (near TTL expiry, minimum refresh interval elapsed, concurrency slots available).
-* They run **outside the caller’s execution path**, meaning the caller doesn’t pay for loader latency during a hit.
-* This makes refresh **opportunistic**, keeping cache fresh without impacting response time.
+2. `_keyLocks`
 
----
+* Fine-grained lock for hot keys.
+* Ensures only one thread executes the loader for a given key.
 
-## What this means for latency
+3. `_earlyRefreshConcurrencySemaphore`
 
-**Cache Hit Path:**
+* Limits global background refresh tasks.
+* Prevents overload of concurrent refreshes.
 
-* `GetOrAddAsync` returns immediately after a cache hit.
-* Caller isn’t blocked waiting for refresh.
-* Early refresh is fire-and-forget, only starting if conditions are right (close to TTL, min interval respected, concurrency slots free).
-* Impact on latency: negligible.
+### Performance
 
-  * Checks `_lastRefresh`
-  * A couple of time comparisons
-  * Maybe a `TryEnter` on the global semaphore
-  * All microsecond-level overhead.
+* **Cache hits** return immediately.
+* Refresh logic is executed asynchronously, inline overhead is microseconds.
+* Cold misses trigger loader once; other callers piggyback on inflight Task.
 
-**Cold Miss Path:**
+### ASCII Diagrams
 
-* Only case where caller waits is when **no cache layer has the value**.
-* Even then, only the **first caller** pays the loader cost.
-* Other callers piggyback on the in-flight `Task`.
-
----
-
-## ASCII Timing Diagrams
-
-### Cache Hit + Early Refresh
+#### Cache Hit + Early Refresh
 
 ```
 Client calls GetOrAddAsync("K") ──────────┐
@@ -225,17 +235,15 @@ Client calls GetOrAddAsync("K") ──────────┐
    └──► TriggerEarlyRefresh("K")
            │
            ├─ Checks TTL / interval
-           │
            ├─ If eligible: starts Task.Run
            │       │
            │       └── Calls loader in background
            │             Updates cache layers
            │             Updates _lastRefresh
-           │
            └─ If not eligible: no-op
 ```
 
-### Cold Miss Path
+#### Cold Miss Path
 
 ```
 Client calls GetOrAddAsync("K") ──────────┐
@@ -252,48 +260,28 @@ Check _inflight for key                   │
    │          Value returned              │
    │          Cache updated               │
    │          _lastRefresh updated        │
-   │                                      │
    └─ If present: await existing Task ◄───┘
 
 Return value once loader finishes
 ```
 
-**So:**
+### Loader and Writer Functions
 
-* Cache hits stay fast → user gets data instantly.
-* Refresh is async and opportunistic → user never pays refresh cost.
-* Cold misses are coordinated → only one caller per key pays loader cost.
+The `MultilayerCache` uses delegates:
 
-## Loader and Writer Functions
-
-The `MultilayerCache` uses **delegates** for both cache loading and persistence.  
-This makes it flexible: you can pass in any function, lambda, or class method that matches the expected signature.
-
-### Loader Functions
-A **loader** is used when a cache miss occurs (or when a refresh is triggered).
-- Must return `Task<TValue>`.
-- Can be:
-  - An `async` lambda:  
-    ```csharp
-    key => FetchFromDatabaseAsync(key)
-    ```
-  - A method group:  
-    ```csharp
-    MyRepository.LoadUserAsync
-    ```
-  - A static or instance method:
-    ```csharp
-    async Task<User> LoadUserAsync(string userId) { ... }
-    ```
+* **Loader:** `Func<TKey, Task<TValue>>`
+* **Persistent Writer:** `Func<TKey, TValue, Task>`
 
 **Example:**
+
 ```csharp
 var value = await cache.GetOrAddAsync(
     key: "user:123",
     loader: userId => userRepository.LoadUserAsync(userId)
 );
-
 ```
+
+---
 
 ## License
 
