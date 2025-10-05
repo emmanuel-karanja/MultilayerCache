@@ -376,6 +376,9 @@ var value = await cache.GetOrAddAsync(
 
 ```
 
+## Future Improvements
+[MultilayerCache Improvements & Roadmap](future_improvements.md)
+
 ## License
 
 This project is licensed under the MIT License.
