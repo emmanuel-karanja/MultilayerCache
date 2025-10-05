@@ -36,12 +36,12 @@ namespace MultilayerCache.Cache
                 description: "Latency of cache operations in milliseconds");
         }
 
-        public async Task<TValue> GetOrAddAsync(TKey key,CancellationToken token)
+        public async Task<TValue> GetOrAddAsync(TKey key, CancellationToken token)
         {
             var sw = Stopwatch.StartNew();
             try
             {
-                return await _inner.GetOrAddAsync(key,token);
+                return await _inner.GetOrAddAsync(key, token);
             }
             finally
             {
@@ -97,5 +97,10 @@ namespace MultilayerCache.Cache
 
         public int GetEarlyRefreshCount(TKey key) => _inner.GetEarlyRefreshCount(key);
         public int GetGlobalEarlyRefreshCount() => _inner.GetGlobalEarlyRefreshCount();
+
+        /// <summary>
+        /// Returns the top N most frequently accessed keys by delegating to the inner cache.
+        /// </summary>
+        public (TKey Key, int Count)[] GetTopKeys(int n) => _inner.GetTopKeys(n);
     }
 }

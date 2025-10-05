@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -101,6 +102,9 @@ namespace MultilayerCache.Cache
         public Action<TKey>? OnCacheMiss { get; set; }
         public Action<TKey>? OnEarlyRefresh { get; set; }
 
+        // Tracks number of hits/misses/early refresh per key
+        private readonly ConcurrentDictionary<TKey, int> _accessCounts = new();
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -149,6 +153,11 @@ namespace MultilayerCache.Cache
             _earlyRefreshConcurrencySemaphore = new SemaphoreSlim(maxConcurrentEarlyRefreshes, maxConcurrentEarlyRefreshes);
             _ttlJitterFraction = Math.Clamp(ttlJitterFraction, 0, 1);
             _promotionPolicy = promotionPolicy;
+
+            // Track cache hits/misses/early refresh for hot keys
+            OnCacheHit = key => _accessCounts.AddOrUpdate(key, 1, (_, count) => count + 1);
+            OnCacheMiss = key => _accessCounts.AddOrUpdate(key, 1, (_, count) => count + 1);
+            OnEarlyRefresh = key => _accessCounts.AddOrUpdate(key, 1, (_, count) => count + 1);
 
             // Start periodic cleanup of stale keys
             _cleanupTimer = new Timer(CleanupStaleKeys, null, _staleKeyCleanupInterval, _staleKeyCleanupInterval);
@@ -307,7 +316,6 @@ namespace MultilayerCache.Cache
         /// <summary>
         /// Executes a fire-and-forget task safely with exception logging.
         /// </summary>
-        /// 
         private async Task WriteToLayers(TKey key, TValue value)
         {
             for (int i = 0; i < _layers.Length; i++)
@@ -321,7 +329,7 @@ namespace MultilayerCache.Cache
                     _logger.LogWarning(ex, "Failed to write key {Key} to layer {Layer}", key, i);
                 }
             }
-}
+        }
 
         private async Task SafeFireAndForget(Func<Task> func)
         {
@@ -355,6 +363,7 @@ namespace MultilayerCache.Cache
                     _inflight.TryRemove(kvp.Key, out _);
                     _keyLocks.TryRemove(kvp.Key, out _);
                     _earlyRefreshCounts.TryRemove(kvp.Key, out _);
+                    _accessCounts.TryRemove(kvp.Key, out _);
                 }
             }
         }
@@ -369,5 +378,17 @@ namespace MultilayerCache.Cache
         /// Returns the global number of early refreshes
         /// </summary>
         public int GetGlobalEarlyRefreshCount() => _globalEarlyRefreshCount;
+
+        /// <summary>
+        /// Returns the top N most frequently accessed keys (hits + misses + early refreshes)
+        /// </summary>
+        public (TKey Key, int Count)[] GetTopKeys(int n)
+        {
+            return _accessCounts
+                .OrderByDescending(kvp => kvp.Value)
+                .Take(n)
+                .Select(kvp => (kvp.Key, kvp.Value))
+                .ToArray();
+        }
     }
 }
