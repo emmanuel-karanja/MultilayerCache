@@ -12,8 +12,10 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
 using Microsoft.Extensions.Options;
 using MultilayerCache.Demo;
-using System.Linq;
 using Microsoft.AspNetCore.Http;
+using NBomber.CSharp;
+using NBomber.Contracts;
+using System;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -60,10 +62,7 @@ builder.Services.AddSingleton<InMemoryCache<string, User>>(sp =>
 {
     var opts = sp.GetRequiredService<IOptions<CacheOptions>>().Value;
     var logger = sp.GetRequiredService<ILogger<InMemoryCache<string, User>>>();
-    return new InMemoryCache<string, User>(
-        TimeSpan.FromSeconds(opts.MemoryCacheCleanupIntervalSeconds),
-        logger
-    );
+    return new InMemoryCache<string, User>(TimeSpan.FromSeconds(opts.MemoryCacheCleanupIntervalSeconds), logger);
 });
 
 builder.Services.AddSingleton<RedisCache<string, User>>(sp =>
@@ -74,7 +73,7 @@ builder.Services.AddSingleton<RedisCache<string, User>>(sp =>
     return new RedisCache<string, User>(opts.Redis.ConnectionString, logger, redisOpts);
 });
 
-// --- Register loader with configurable test behavior ---
+// --- Register loader ---
 builder.Services.AddSingleton<Func<string, CancellationToken, Task<User>>>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<Program>>();
@@ -85,28 +84,22 @@ builder.Services.AddSingleton<Func<string, CancellationToken, Task<User>>>(sp =>
             logger.LogWarning("Loader invoked for missing key {Key}", key);
         }
         await Task.Delay(5, token); // simulate DB/network latency
-        return new User
-        {
-            Id = -1,
-            Name = "LoadedFromSource",
-            Email = "loaded@example.com"
-        };
+        return new User { Id = -1, Name = "LoadedFromSource", Email = "loaded@example.com" };
     };
 });
 
-
-// --- Multilayer cache manager with telemetry hooks ---
+// --- Multilayer cache manager ---
 builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
 {
     var memCache = sp.GetRequiredService<InMemoryCache<string, User>>();
     var redisCache = sp.GetRequiredService<RedisCache<string, User>>();
-    var loader = sp.GetRequiredService<Func<string, CancellationToken, Task<User>>>(); // fixed
+    var loader = sp.GetRequiredService<Func<string, CancellationToken, Task<User>>>();
     var logger = sp.GetRequiredService<ILogger<MultilayerCacheManager<string, User>>>();
     var opts = sp.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
 
     var cacheManager = new MultilayerCacheManager<string, User>(
         new ICache<string, User>[] { memCache, redisCache },
-        loader, // now matches Func<string, CancellationToken, Task<User>>
+        loader,
         logger,
         defaultTtl: opts.DefaultTtl,
         earlyRefreshThreshold: opts.EarlyRefreshThreshold,
@@ -114,7 +107,6 @@ builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
         maxConcurrentEarlyRefreshes: opts.MaxConcurrentEarlyRefreshes
     );
 
-    // --- Telemetry hooks ---
     cacheManager.OnCacheHit = key => Console.WriteLine($"[Telemetry] HIT: {key}");
     cacheManager.OnCacheMiss = key => Console.WriteLine($"[Telemetry] MISS: {key}");
     cacheManager.OnEarlyRefresh = key => Console.WriteLine($"[Telemetry] EARLY REFRESH: {key}");
@@ -122,26 +114,17 @@ builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
     return cacheManager;
 });
 
-
-// --- Instrumentation decorator (optional) ---
+// --- Optional instrumentation decorator ---
 builder.Services.AddSingleton<InstrumentedCacheManagerDecorator<string, User>>(sp =>
 {
     var baseCache = sp.GetRequiredService<MultilayerCacheManager<string, User>>();
     return new InstrumentedCacheManagerDecorator<string, User>(baseCache);
 });
 
-// --- Controllers & Swagger ---
+// --- Register controllers & Swagger ---
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-    {
-        Title = "MultilayerCache API",
-        Version = "v1",
-        Description = "API demonstrating MultilayerCache with all test scenarios."
-    });
-});
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
@@ -162,23 +145,27 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 
-// --- Seed some keys for testing ---
+// --- Seed cache keys ---
 var cacheManager = app.Services.GetRequiredService<MultilayerCacheManager<string, User>>();
-
 await cacheManager.SetAsync("user:1", new User { Id = 1, Name = "Preloaded1", Email = "user1@example.com" });
 await cacheManager.SetAsync("user:2", new User { Id = 2, Name = "Preloaded2", Email = "user2@example.com" });
 
-// --- Background task to trigger early refresh manually ---
-_ = Task.Run(async () =>
-{
-    while (!app.Lifetime.ApplicationStopping.IsCancellationRequested)
-    {
-        await Task.Delay(5000); // check every 5s
-        await cacheManager.GetOrAddAsync("user:1"); // triggers soft TTL / early refresh if threshold reached
-    }
-});
+// --- NBomber scenario for load testing ---
+var random = new Random();
 
-// --- Controller for manual testing ---
+var scenario = Scenario.Create("multilayer_cache_load_test", async context =>
+{
+    var key = $"user:{random.Next(1, 5)}";
+    var value = await cacheManager.GetOrAddAsync(key);
+    return Response.Ok(value);
+})
+.WithLoadSimulations(Simulation.KeepConstant(50, TimeSpan.FromMinutes(1)));
+
+// NBomber v6: Run synchronously
+var stats = NBomberRunner.RegisterScenarios(scenario).Run();
+Console.WriteLine($"NBomber test finished. Total OK requests: {stats.AllOkCount}");
+
+// --- Manual cache endpoints ---
 app.MapGet("/api/cache/{key}", async (string key) =>
 {
     var value = await cacheManager.GetOrAddAsync(key);
@@ -186,20 +173,6 @@ app.MapGet("/api/cache/{key}", async (string key) =>
     {
         Key = key,
         Value = value,
-        EarlyRefreshCount = cacheManager.GetEarlyRefreshCount(key)
-    });
-});
-
-app.MapGet("/api/cache/parallel/{key}/{count:int}", async (string key, int count) =>
-{
-    var tasks = Enumerable.Range(0, count)
-        .Select(_ => cacheManager.GetOrAddAsync(key));
-    var results = await Task.WhenAll(tasks);
-
-    return Results.Ok(new
-    {
-        Key = key,
-        Values = results.Select(v => v.Name).ToArray(),
         EarlyRefreshCount = cacheManager.GetEarlyRefreshCount(key)
     });
 });

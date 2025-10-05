@@ -5,4 +5,4 @@ services:
     container_name: redis_cache
     command: ["redis-server", "--protected-mode", "no"]
     ports:
-      - "6800:6379"   # HostPort:ContainerPort (host 6800 → container 6379)
+      - "6379:6379"   # HostPort:ContainerPort

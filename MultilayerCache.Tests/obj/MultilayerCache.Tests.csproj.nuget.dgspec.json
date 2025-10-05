@@ -58,27 +58,35 @@
             },
             "Microsoft.Extensions.Configuration": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.7, )"
             },
             "Microsoft.Extensions.Configuration.Binder": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.7, )"
             },
             "Microsoft.Extensions.Configuration.EnvironmentVariables": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.7, )"
             },
             "Microsoft.Extensions.Configuration.FileExtensions": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.7, )"
             },
             "Microsoft.Extensions.Configuration.Json": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.7, )"
             },
             "Microsoft.Extensions.Options.ConfigurationExtensions": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.7, )"
+            },
+            "NBomber": {
+              "target": "Package",
+              "version": "[6.1.1, )"
+            },
+            "NBomber.Contracts": {
+              "target": "Package",
+              "version": "[6.1.0, )"
             },
             "OpenTelemetry": {
               "target": "Package",
@@ -114,7 +122,7 @@
             },
             "Serilog": {
               "target": "Package",
-              "version": "[3.1.1, )"
+              "version": "[4.2.0, )"
             },
             "Serilog.AspNetCore": {
               "target": "Package",
@@ -124,13 +132,29 @@
               "target": "Package",
               "version": "[1.0.6, )"
             },
+            "Serilog.Enrichers.Environment": {
+              "target": "Package",
+              "version": "[3.0.1, )"
+            },
+            "Serilog.Enrichers.Thread": {
+              "target": "Package",
+              "version": "[4.0.0, )"
+            },
             "Serilog.Extensions.Logging": {
               "target": "Package",
               "version": "[8.0.0, )"
             },
+            "Serilog.Settings.Configuration": {
+              "target": "Package",
+              "version": "[9.0.0, )"
+            },
             "Serilog.Sinks.Console": {
               "target": "Package",
               "version": "[5.0.1, )"
+            },
+            "Serilog.Sinks.File": {
+              "target": "Package",
+              "version": "[6.0.0, )"
             },
             "StackExchange.Redis": {
               "target": "Package",
