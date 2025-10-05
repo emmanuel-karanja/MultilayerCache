@@ -38,5 +38,7 @@ namespace MultilayerCache.Cache
         /// Returns the top N most frequently accessed keys (hits + misses + early refreshes)
         /// </summary>
         (TKey Key, int Count)[] GetTopKeys(int n);
+
+        CacheMetricsSnapshot<TKey> GetMetricsSnapshot(int topN);
     }
 }

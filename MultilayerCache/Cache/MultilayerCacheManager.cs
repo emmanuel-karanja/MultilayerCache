@@ -390,5 +390,41 @@ namespace MultilayerCache.Cache
                 .Select(kvp => (kvp.Key, kvp.Value))
                 .ToArray();
         }
+
+        /// <summary>
+        /// Returns a snapshot of the current metrics for this cache instance.
+        /// </summary>
+        /// <param name="topN">Number of top keys to return by access count</param>
+        public CacheMetricsSnapshot<TKey> GetMetricsSnapshot(int topN = 10)
+        {
+            // Capture hits per key
+            var hitsCopy = new Dictionary<TKey, int>(_accessCounts);
+
+            // Capture early refresh counts
+            var earlyRefreshCopy = new Dictionary<TKey, int>(_earlyRefreshCounts);
+
+            // Capture last refresh timestamps
+            var lastRefreshCopy = new Dictionary<TKey, DateTime>(_lastRefresh);
+
+            // Capture in-flight keys
+            var inflightKeys = _inflight.Keys.ToList();
+
+            // Determine top N keys by access count
+            var topKeys = hitsCopy
+                .OrderByDescending(kvp => kvp.Value)
+                .Take(topN)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            return new CacheMetricsSnapshot<TKey>
+            {
+                HitsPerKey = hitsCopy,
+                EarlyRefreshesPerKey = earlyRefreshCopy,
+                LastRefreshPerKey = lastRefreshCopy,
+                InflightKeys = inflightKeys,
+                GlobalEarlyRefreshCount = _globalEarlyRefreshCount,
+                TopKeysByAccessCount = topKeys
+            };
+        }
     }
 }

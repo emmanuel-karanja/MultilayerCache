@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Collections.Concurrent;
@@ -6,7 +7,7 @@ namespace MultilayerCache.Cache
 {
     /// <summary>
     /// Decorator for IMultilayerCacheManager that adds instrumentation for metrics.
-    /// Measures latency, throughput, and operation counts without modifying the original cache logic.
+    /// Measures latency, throughput, operation counts, and exposes raw cache metrics.
     /// </summary>
     public class InstrumentedCacheManagerDecorator<TKey, TValue> : IMultilayerCacheManager<TKey, TValue>
         where TKey : notnull
@@ -99,8 +100,32 @@ namespace MultilayerCache.Cache
         public int GetGlobalEarlyRefreshCount() => _inner.GetGlobalEarlyRefreshCount();
 
         /// <summary>
-        /// Returns the top N most frequently accessed keys by delegating to the inner cache.
+        /// Returns the top N most frequently accessed keys and their counts.
+        /// Delegates to the inner cache manager.
         /// </summary>
-        public (TKey Key, int Count)[] GetTopKeys(int n) => _inner.GetTopKeys(n);
+        public (TKey Key, int Count)[] GetTopKeys(int n)
+        {
+            if (_inner is MultilayerCacheManager<TKey, TValue> concrete)
+            {
+                var snapshot = concrete.GetMetricsSnapshot(n);
+                var topKeys = snapshot.TopKeysByAccessCount
+                    .Select(k => (Key: k, Count: snapshot.HitsPerKey.TryGetValue(k, out var c) ? c : 0))
+                    .ToArray();
+                return topKeys;
+            }
+            return Array.Empty<(TKey, int)>();
+        }
+
+        /// <summary>
+        /// Returns a full snapshot of raw cache metrics from the inner cache manager.
+        /// </summary>
+        public CacheMetricsSnapshot<TKey> GetMetricsSnapshot(int topN = 10)
+        {
+            if (_inner is MultilayerCacheManager<TKey, TValue> concrete)
+            {
+                return concrete.GetMetricsSnapshot(topN);
+            }
+            return new CacheMetricsSnapshot<TKey>();
+        }
     }
 }
