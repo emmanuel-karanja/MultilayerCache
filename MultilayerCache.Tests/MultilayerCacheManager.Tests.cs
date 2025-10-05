@@ -4,157 +4,214 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
 using MultilayerCache.Cache;
-using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
 
-public class MultilayerCacheManagerFullTests
+namespace MultilayerCache.Tests
 {
-    private class TestWritePolicy<TKey, TValue> : IWritePolicy<TKey, TValue>
-        where TKey : notnull
+    public class MultilayerCacheManagerTests
     {
-        public List<(TKey key, TValue value)> Written = new();
-        public TimeSpan DefaultTtl { get; }
-
-        public TestWritePolicy(TimeSpan ttl) => DefaultTtl = ttl;
-
-        public Task WriteAsync(TKey key, TValue value, ICache<TKey, TValue>[] layers, ILogger logger, Func<TKey, TValue, Task> persistentStoreWriter,TimeSpan? ttl)
+        private class TestCache : ICache<string, string>
         {
-            Written.Add((key, value));
-            return Task.CompletedTask;
-        }
-    }
+            private readonly Dictionary<string, string> _store = new();
 
-    private class TestCache<TKey, TValue> : ICache<TKey, TValue>
-        where TKey : notnull
-    {
-        private readonly Dictionary<TKey, TValue> _store = new();
-        private readonly TimeSpan _ttl;
+            // Async methods
+            public Task<(bool, string)> TryGetAsync(string key)
+            {
+                return Task.FromResult(_store.TryGetValue(key, out var val) ? (true, val) : (false, null!));
+            }
 
-        public TestCache(TimeSpan ttl) => _ttl = ttl;
+            public Task SetAsync(string key, string value, TimeSpan ttl)
+            {
+                _store[key] = value;
+                return Task.CompletedTask;
+            }
 
-        public void Set(TKey key, TValue value, TimeSpan ttl) => _store[key] = value;
-        public bool TryGet(TKey key, out TValue value) => _store.TryGetValue(key, out value!);
+            // Synchronous methods (implement interface)
+            public bool TryGet(string key, out string value)
+            {
+                return _store.TryGetValue(key, out value!);
+            }
 
-        public Task SetAsync(TKey key, TValue value, TimeSpan ttl) { Set(key, value, ttl); return Task.CompletedTask; }
-        public Task<(bool found, TValue value)> TryGetAsync(TKey key)
-        {
-            var found = _store.TryGetValue(key, out var value);
-            return Task.FromResult((found, value!));
-        }
-    }
-
-    [Fact]
-    public async Task CacheMiss_ShouldCallLoader_AndWriteToAllLayers()
-    {
-        var logger = new Mock<ILogger>().Object;
-        var l1 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-        var l2 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-        var writePolicy = new TestWritePolicy<string, string>(TimeSpan.FromMinutes(5));
-
-        bool loaderCalled = false;
-        Task<string> Loader(string key)
-        {
-            loaderCalled = true;
-            return Task.FromResult("LoadedValue");
+            public void Set(string key, string value, TimeSpan ttl)
+            {
+                _store[key] = value;
+            }
         }
 
-        var manager = new MultilayerCacheManager<string, string>(
-            new ICache<string, string>[] { l1, l2 },
-            Loader,
-            logger,
-            writePolicy,
-            defaultTtl: TimeSpan.FromMinutes(5),
-            persistentStoreWriter: async (k, v) => { /* nothing */ },
-            earlyRefreshThreshold: TimeSpan.FromMilliseconds(100),
-            minRefreshInterval: TimeSpan.Zero,
-            maxConcurrentEarlyRefreshes: 1
-        );
 
-        var value = await manager.GetOrAddAsync("key1");
-
-        Assert.Equal("LoadedValue", value);
-        Assert.True(loaderCalled);
-        Assert.Single(writePolicy.Written);
-        Assert.Equal("key1", writePolicy.Written[0].key);
-        Assert.Equal("LoadedValue", writePolicy.Written[0].value);
-    }
-
-    [Fact]
-    public async Task CacheHit_ShouldReturnL1Value_AndPromoteL2Value()
-    {
-        var logger = new Mock<ILogger>().Object;
-        var l1 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-        var l2 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-
-        await l2.SetAsync("key1", "L2Value", TimeSpan.FromMinutes(5));
-
-        Task<string> Loader(string key) => Task.FromResult("LoadedValue");
-
-        var manager = new MultilayerCacheManager<string, string>(
-            new ICache<string, string>[] { l1, l2 },
-            Loader,
-            logger,
-            defaultTtl: TimeSpan.FromMinutes(5)
-        );
-
-        var value = await manager.GetOrAddAsync("key1");
-
-        Assert.Equal("L2Value", value);
-
-        var (found, promotedValue) = await l1.TryGetAsync("key1");
-        Assert.True(found);
-        Assert.Equal("L2Value", promotedValue);
-    }
-
-    [Fact]
-    public async Task RequestCoalescing_ShouldCallLoaderOnlyOnce()
-    {
-        var logger = new Mock<ILogger>().Object;
-        var l1 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-        var l2 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-
-        int loaderCount = 0;
-        async Task<string> Loader(string key)
+        [Fact]
+        public async Task GetOrAddAsync_ReturnsLoaderValue_OnCacheMiss()
         {
-            Interlocked.Increment(ref loaderCount);
-            await Task.Delay(50);
-            return "Value";
+            var mem = new TestCache();
+            var redis = new TestCache();
+            var logger = Mock.Of<ILogger>();
+
+            var loaderCalled = false;
+            Func<string, CancellationToken, Task<string>> loader = async (k, t) =>
+            {
+                loaderCalled = true;
+                await Task.Delay(1);
+                return "value_from_loader";
+            };
+
+            var mgr = new MultilayerCacheManager<string, string>(
+                new ICache<string, string>[] { mem, redis },
+                loader,
+                logger);
+
+            var value = await mgr.GetOrAddAsync("key1");
+            Assert.Equal("value_from_loader", value);
+            Assert.True(loaderCalled);
+
+            // Verify it is written to memory and redis caches
+            var (foundMem, valMem) = await mem.TryGetAsync("key1");
+            Assert.True(foundMem);
+            Assert.Equal("value_from_loader", valMem);
+
+            var (foundRedis, valRedis) = await redis.TryGetAsync("key1");
+            Assert.True(foundRedis);
+            Assert.Equal("value_from_loader", valRedis);
         }
 
-        var manager = new MultilayerCacheManager<string, string>(
-            new ICache<string, string>[] { l1, l2 },
-            Loader,
-            logger
-        );
+        [Fact]
+        public async Task GetOrAddAsync_ReturnsCachedValue_OnCacheHit()
+        {
+            var mem = new TestCache();
+            var redis = new TestCache();
+            var logger = Mock.Of<ILogger>();
 
-        var tasks = new List<Task<string>>();
-        for (int i = 0; i < 10; i++)
-            tasks.Add(manager.GetOrAddAsync("key1"));
+            await mem.SetAsync("key1", "cached_value", TimeSpan.FromMinutes(5));
 
-        await Task.WhenAll(tasks);
+            var loaderCalled = false;
+            Func<string, CancellationToken, Task<string>> loader = (k, t) =>
+            {
+                loaderCalled = true;
+                return Task.FromResult("loader_value");
+            };
 
-        Assert.Equal(1, loaderCount);
-    }
+            var mgr = new MultilayerCacheManager<string, string>(
+                new ICache<string, string>[] { mem, redis },
+                loader,
+                logger);
 
+            var value = await mgr.GetOrAddAsync("key1");
+            Assert.Equal("cached_value", value);
+            Assert.False(loaderCalled);
+        }
 
-    [Fact]
-    public async Task SetAsync_ShouldCallWritePolicyAndUpdateLastRefresh()
-    {
-        var logger = new Mock<ILogger>().Object;
-        var l1 = new TestCache<string, string>(TimeSpan.FromMinutes(5));
-        var writePolicy = new TestWritePolicy<string, string>(TimeSpan.FromMinutes(5));
+        [Fact]
+        public async Task PromotionPolicy_FirstLayerOnly_PromotesToFirstLayerOnly()
+        {
+            var layer0 = new TestCache();
+            var layer1 = new TestCache();
+            var logger = Mock.Of<ILogger>();
 
-        var manager = new MultilayerCacheManager<string, string>(
-            new ICache<string, string>[] { l1 },
-            key => Task.FromResult("Loader"),
-            logger,
-            writePolicy
-        );
+            await layer1.SetAsync("key1", "value_from_layer1", TimeSpan.FromMinutes(5));
 
-        await manager.SetAsync("key1", "Value1");
+            var mgr = new MultilayerCacheManager<string, string>(
+                new ICache<string, string>[] { layer0, layer1 },
+                (k, t) => Task.FromResult("loader_value"),
+                logger,
+                promotionPolicy: PromotionPolicy.FirstLayerOnly);
 
-        Assert.Single(writePolicy.Written);
-        Assert.Equal("Value1", writePolicy.Written[0].value);
+            var value = await mgr.GetOrAddAsync("key1");
+
+            var (found0, val0) = await layer0.TryGetAsync("key1");
+            Assert.True(found0);
+            Assert.Equal("value_from_layer1", val0);
+
+            var (found1, val1) = await layer1.TryGetAsync("key1");
+            Assert.True(found1);
+            Assert.Equal("value_from_layer1", val1);
+        }
+
+        [Fact]
+        public async Task RequestCoalescing_AllowsOnlyOneLoaderCall()
+        {
+            var mem = new TestCache();
+            var redis = new TestCache();
+            var logger = Mock.Of<ILogger>();
+
+            int loaderCalls = 0;
+            Func<string, CancellationToken, Task<string>> loader = async (k, t) =>
+            {
+                Interlocked.Increment(ref loaderCalls);
+                await Task.Delay(50); // simulate slow load
+                return "loaded";
+            };
+
+            var mgr = new MultilayerCacheManager<string, string>(
+                new ICache<string, string>[] { mem, redis },
+                loader,
+                logger);
+
+            var tasks = new List<Task<string>>();
+            for (int i = 0; i < 10; i++)
+            {
+                tasks.Add(mgr.GetOrAddAsync("key1"));
+            }
+
+            var results = await Task.WhenAll(tasks);
+            Assert.All(results, v => Assert.Equal("loaded", v));
+            Assert.Equal(1, loaderCalls);
+        }
+
+        [Fact]
+        public async Task EarlyRefresh_IncrementsEarlyRefreshCount()
+        {
+            var mem = new TestCache();
+            var redis = new TestCache();
+            var logger = Mock.Of<ILogger>();
+
+            int loaderCalls = 0;
+            Func<string, CancellationToken, Task<string>> loader = async (k, t) =>
+            {
+                Interlocked.Increment(ref loaderCalls);
+                return "refreshed";
+            };
+
+            var mgr = new MultilayerCacheManager<string, string>(
+                new ICache<string, string>[] { mem, redis },
+                loader,
+                logger,
+                defaultTtl: TimeSpan.FromMilliseconds(50),
+                earlyRefreshThreshold: TimeSpan.FromMilliseconds(10),
+                minRefreshInterval: TimeSpan.Zero);
+
+            // Seed value
+            await mgr.SetAsync("key1", "initial");
+
+            // Wait for TTL + threshold to trigger early refresh
+            await Task.Delay(60);
+
+            // Force access to trigger early refresh
+            var val = await mgr.GetOrAddAsync("key1");
+
+            // Allow background refresh to run
+            await Task.Delay(100);
+
+            var earlyCount = mgr.GetEarlyRefreshCount("key1");
+            Assert.True(earlyCount > 0);
+            Assert.Equal("refreshed", val); // latest value
+        }
+
+        [Fact]
+        public void GetOrAdd_Synchronous_Works()
+        {
+            var mem = new TestCache();
+            var redis = new TestCache();
+            var logger = Mock.Of<ILogger>();
+
+            Func<string, CancellationToken, Task<string>> loader = (k, t) => Task.FromResult("sync_value");
+
+            var mgr = new MultilayerCacheManager<string, string>(
+                new ICache<string, string>[] { mem, redis },
+                loader,
+                logger);
+
+            var value = mgr.GetOrAdd("key_sync");
+            Assert.Equal("sync_value", value);
+        }
     }
 }
