@@ -12,12 +12,14 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
 using Microsoft.Extensions.Options;
 using MultilayerCache.Demo;
+using System.Linq;
+using Microsoft.AspNetCore.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Load configuration ---
 builder.Configuration
-       .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+       .AddJsonFile("MultilayerCache.Demo\\appsettings.json", optional: false, reloadOnChange: true)
        .AddEnvironmentVariables();
 
 // --- Configure Serilog ---
@@ -72,17 +74,17 @@ builder.Services.AddSingleton<RedisCache<string, User>>(sp =>
     return new RedisCache<string, User>(opts.Redis.ConnectionString, logger, redisOpts);
 });
 
-// --- Register loader ---
-builder.Services.AddSingleton<Func<string, Task<User>>>(sp =>
+// --- Register loader with configurable test behavior ---
+builder.Services.AddSingleton<Func<string, CancellationToken, Task<User>>>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<Program>>();
-    return async key =>
+    return async (key, token) =>
     {
         using (LogContext.PushProperty("ClassName", "LoaderFunction"))
         {
             logger.LogWarning("Loader invoked for missing key {Key}", key);
         }
-        await Task.Delay(5); // simulate DB/network latency
+        await Task.Delay(5, token); // simulate DB/network latency
         return new User
         {
             Id = -1,
@@ -92,18 +94,19 @@ builder.Services.AddSingleton<Func<string, Task<User>>>(sp =>
     };
 });
 
+
 // --- Multilayer cache manager with telemetry hooks ---
 builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
 {
     var memCache = sp.GetRequiredService<InMemoryCache<string, User>>();
     var redisCache = sp.GetRequiredService<RedisCache<string, User>>();
-    var loader = sp.GetRequiredService<Func<string, Task<User>>>();
+    var loader = sp.GetRequiredService<Func<string, CancellationToken, Task<User>>>(); // fixed
     var logger = sp.GetRequiredService<ILogger<MultilayerCacheManager<string, User>>>();
     var opts = sp.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
 
     var cacheManager = new MultilayerCacheManager<string, User>(
         new ICache<string, User>[] { memCache, redisCache },
-        loader,
+        loader, // now matches Func<string, CancellationToken, Task<User>>
         logger,
         defaultTtl: opts.DefaultTtl,
         earlyRefreshThreshold: opts.EarlyRefreshThreshold,
@@ -112,28 +115,15 @@ builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
     );
 
     // --- Telemetry hooks ---
-    cacheManager.OnCacheHit = key =>
-    {
-        logger.LogInformation("Cache HIT for key {Key}", key);
-        // TODO: increment custom metrics or OpenTelemetry counters
-    };
-
-    cacheManager.OnCacheMiss = key =>
-    {
-        logger.LogWarning("Cache MISS for key {Key}", key);
-        // TODO: increment custom metrics or OpenTelemetry counters
-    };
-
-    cacheManager.OnEarlyRefresh = key =>
-    {
-        logger.LogInformation("Early refresh triggered for key {Key}", key);
-        // TODO: increment custom metrics or OpenTelemetry counters
-    };
+    cacheManager.OnCacheHit = key => Console.WriteLine($"[Telemetry] HIT: {key}");
+    cacheManager.OnCacheMiss = key => Console.WriteLine($"[Telemetry] MISS: {key}");
+    cacheManager.OnEarlyRefresh = key => Console.WriteLine($"[Telemetry] EARLY REFRESH: {key}");
 
     return cacheManager;
 });
 
-// --- Instrumentation decorator ---
+
+// --- Instrumentation decorator (optional) ---
 builder.Services.AddSingleton<InstrumentedCacheManagerDecorator<string, User>>(sp =>
 {
     var baseCache = sp.GetRequiredService<MultilayerCacheManager<string, User>>();
@@ -149,7 +139,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "MultilayerCache API",
         Version = "v1",
-        Description = "API demonstrating MultilayerCache with OpenTelemetry and Serilog."
+        Description = "API demonstrating MultilayerCache with all test scenarios."
     });
 });
 
@@ -164,12 +154,54 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "MultilayerCache API v1");
-        c.RoutePrefix = string.Empty; // optional: Swagger at root
+        c.RoutePrefix = string.Empty;
     });
 }
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+
+// --- Seed some keys for testing ---
+var cacheManager = app.Services.GetRequiredService<MultilayerCacheManager<string, User>>();
+
+await cacheManager.SetAsync("user:1", new User { Id = 1, Name = "Preloaded1", Email = "user1@example.com" });
+await cacheManager.SetAsync("user:2", new User { Id = 2, Name = "Preloaded2", Email = "user2@example.com" });
+
+// --- Background task to trigger early refresh manually ---
+_ = Task.Run(async () =>
+{
+    while (!app.Lifetime.ApplicationStopping.IsCancellationRequested)
+    {
+        await Task.Delay(5000); // check every 5s
+        await cacheManager.GetOrAddAsync("user:1"); // triggers soft TTL / early refresh if threshold reached
+    }
+});
+
+// --- Controller for manual testing ---
+app.MapGet("/api/cache/{key}", async (string key) =>
+{
+    var value = await cacheManager.GetOrAddAsync(key);
+    return Results.Ok(new
+    {
+        Key = key,
+        Value = value,
+        EarlyRefreshCount = cacheManager.GetEarlyRefreshCount(key)
+    });
+});
+
+app.MapGet("/api/cache/parallel/{key}/{count:int}", async (string key, int count) =>
+{
+    var tasks = Enumerable.Range(0, count)
+        .Select(_ => cacheManager.GetOrAddAsync(key));
+    var results = await Task.WhenAll(tasks);
+
+    return Results.Ok(new
+    {
+        Key = key,
+        Values = results.Select(v => v.Name).ToArray(),
+        EarlyRefreshCount = cacheManager.GetEarlyRefreshCount(key)
+    });
+});
 
 app.Run();

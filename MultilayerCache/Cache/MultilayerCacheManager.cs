@@ -285,9 +285,7 @@ namespace MultilayerCache.Cache
                 {
                     await Task.Delay(_random.Next(0, 500)); // small jitter delay
                     var refreshedValue = await _loaderFunction(key, CancellationToken.None);
-
-                    await _writePolicy.WriteAsync(key, refreshedValue, _layers, _logger,
-                        async (k, v, layerIdx) => await _layers[layerIdx].SetAsync(k, v, _layerTtls[layerIdx]));
+                    await _writePolicy.WriteAsync(key, refreshedValue, _layers, _logger, WriteToLayers);
 
                     _lastRefresh[key] = DateTime.UtcNow;
                     _earlyRefreshCounts.AddOrUpdate(key, 1, (_, c) => c + 1);
@@ -309,6 +307,22 @@ namespace MultilayerCache.Cache
         /// <summary>
         /// Executes a fire-and-forget task safely with exception logging.
         /// </summary>
+        /// 
+        private async Task WriteToLayers(TKey key, TValue value)
+        {
+            for (int i = 0; i < _layers.Length; i++)
+            {
+                try
+                {
+                    await _layers[i].SetAsync(key, value, _layerTtls[i]);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to write key {Key} to layer {Layer}", key, i);
+                }
+            }
+}
+
         private async Task SafeFireAndForget(Func<Task> func)
         {
             try { await func(); }

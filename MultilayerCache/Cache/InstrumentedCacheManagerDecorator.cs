@@ -36,12 +36,12 @@ namespace MultilayerCache.Cache
                 description: "Latency of cache operations in milliseconds");
         }
 
-        public async Task<TValue> GetOrAddAsync(TKey key)
+        public async Task<TValue> GetOrAddAsync(TKey key,CancellationToken token)
         {
             var sw = Stopwatch.StartNew();
             try
             {
-                return await _inner.GetOrAddAsync(key);
+                return await _inner.GetOrAddAsync(key,token);
             }
             finally
             {

@@ -17,7 +17,7 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> GetUser(int id)
     {
         string key = $"user:{id}";
-        var user = await _cache.GetOrAddAsync(key);
+        var user = await _cache.GetOrAddAsync(key,CancellationToken.None);
         if (user == null) return NotFound();
 
         return Ok(new
