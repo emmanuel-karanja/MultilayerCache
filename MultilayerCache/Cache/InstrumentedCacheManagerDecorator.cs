@@ -116,16 +116,17 @@ namespace MultilayerCache.Cache
             return Array.Empty<(TKey, int)>();
         }
 
-        /// <summary>
-        /// Returns a full snapshot of raw cache metrics from the inner cache manager.
+       
+        /// Returns a snapshot of the cache metrics from the inner cache manager, plus latency data.
         /// </summary>
         public CacheMetricsSnapshot<TKey> GetMetricsSnapshot(int topN = 10)
         {
-            if (_inner is MultilayerCacheManager<TKey, TValue> concrete)
-            {
-                return concrete.GetMetricsSnapshot(topN);
-            }
-            return new CacheMetricsSnapshot<TKey>();
+            var snapshot = _inner.GetMetricsSnapshot(topN);
+
+            // Add last recorded latency per key from this decorator
+            snapshot.LastLatencyPerKey = new Dictionary<TKey, double>(_latencyPerKey);
+
+            return snapshot;
         }
     }
 }

@@ -180,6 +180,9 @@ namespace MultilayerCache.Cache
                         _logger.LogDebug("Cache hit at layer {Layer} for key {Key}", i, key);
                         OnCacheHit?.Invoke(key);
 
+                        // Track access for top key statistics
+                        _accessCounts.AddOrUpdate(key, 1, (_, c) => c + 1);
+
                         PromoteToHigherLayers(key, value, i);
                         TriggerEarlyRefresh(key);
                         return value;
@@ -397,34 +400,38 @@ namespace MultilayerCache.Cache
         /// <param name="topN">Number of top keys to return by access count</param>
         public CacheMetricsSnapshot<TKey> GetMetricsSnapshot(int topN = 10)
         {
-            // Capture hits per key
-            var hitsCopy = new Dictionary<TKey, int>(_accessCounts);
-
-            // Capture early refresh counts
-            var earlyRefreshCopy = new Dictionary<TKey, int>(_earlyRefreshCounts);
-
-            // Capture last refresh timestamps
-            var lastRefreshCopy = new Dictionary<TKey, DateTime>(_lastRefresh);
-
-            // Capture in-flight keys
-            var inflightKeys = _inflight.Keys.ToList();
-
-            // Determine top N keys by access count
-            var topKeys = hitsCopy
-                .OrderByDescending(kvp => kvp.Value)
-                .Take(topN)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            return new CacheMetricsSnapshot<TKey>
+            // Build the snapshot
+            var snapshot = new CacheMetricsSnapshot<TKey>
             {
-                HitsPerKey = hitsCopy,
-                EarlyRefreshesPerKey = earlyRefreshCopy,
-                LastRefreshPerKey = lastRefreshCopy,
-                InflightKeys = inflightKeys,
-                GlobalEarlyRefreshCount = _globalEarlyRefreshCount,
-                TopKeysByAccessCount = topKeys
+                // Access counts per key
+                HitsPerKey = new Dictionary<TKey, int>(_accessCounts),
+
+                // Early refresh counts per key
+                EarlyRefreshCountPerKey = new Dictionary<TKey, int>(_earlyRefreshCounts),
+
+                // Last refresh timestamps per key
+                LastRefreshTimestamp = new Dictionary<TKey, DateTime>(_lastRefresh),
+
+                // Keys currently being loaded
+                InFlightKeys = new HashSet<TKey>(_inflight.Keys)
             };
+
+            // Compute total hits
+            snapshot.TotalHits = snapshot.HitsPerKey.Values.Sum();
+
+            // Compute total early refreshes
+            snapshot.TotalEarlyRefreshes = snapshot.EarlyRefreshCountPerKey.Values.Sum();
+
+            // Compute top N keys by access count
+            snapshot.TopKeysByAccessCount = snapshot.HitsPerKey
+                .OrderByDescending(kv => kv.Value)
+                .Take(topN)
+                .Select(kv => kv.Key)
+                .ToArray();
+
+            // Latency is not tracked here; decorator can populate it
+
+            return snapshot;
         }
     }
 }
