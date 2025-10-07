@@ -14,13 +14,8 @@ using Microsoft.Extensions.Options;
 using MultilayerCache.Demo;
 using Microsoft.AspNetCore.Http;
 using NBomber.CSharp;
-using NBomber.Contracts;
-using System;
-using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,7 +29,6 @@ Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .CreateLogger();
-
 builder.Host.UseSerilog();
 
 // --- Configure OpenTelemetry ---
@@ -62,14 +56,22 @@ builder.Services.Configure<CacheOptions>(builder.Configuration.GetSection("Cache
 builder.Services.Configure<MultilayerCacheOptions>(builder.Configuration.GetSection("MultilayerCache"));
 builder.Services.Configure<RedisResilienceOptions>(builder.Configuration.GetSection("RedisResilience"));
 
-// --- Register caches ---
-builder.Services.AddSingleton<InMemoryCache<string, User>>(sp =>
+// --- Register TinyLFU L1 cache (experimental) ---
+builder.Services.AddSingleton<EnhancedWTinyLFUInMemoryCache<string, User>>(sp =>
 {
     var opts = sp.GetRequiredService<IOptions<CacheOptions>>().Value;
-    var logger = sp.GetRequiredService<ILogger<InMemoryCache<string, User>>>();
-    return new InMemoryCache<string, User>(TimeSpan.FromSeconds(opts.MemoryCacheCleanupIntervalSeconds), logger);
+    var logger = sp.GetRequiredService<ILogger<EnhancedWTinyLFUInMemoryCache<string, User>>>();
+    return new EnhancedWTinyLFUInMemoryCache<string, User>(
+        cleanupInterval: TimeSpan.FromSeconds(opts.MemoryCacheCleanupIntervalSeconds),
+        logger: logger,
+        maxSize: 1000,
+        useTinyLFU: true,
+        decayInterval: TimeSpan.FromMinutes(5),
+        earlyRefreshThreshold: TimeSpan.FromSeconds(30)
+    );
 });
 
+// --- Register Redis L2 cache ---
 builder.Services.AddSingleton<RedisCache<string, User>>(sp =>
 {
     var opts = sp.GetRequiredService<IOptions<CacheOptions>>().Value;
@@ -93,17 +95,17 @@ builder.Services.AddSingleton<Func<string, CancellationToken, Task<User>>>(sp =>
     };
 });
 
-// --- Multilayer cache manager ---
+// --- Multilayer cache manager using TinyLFU as L1 ---
 builder.Services.AddSingleton<MultilayerCacheManager<string, User>>(sp =>
 {
-    var memCache = sp.GetRequiredService<InMemoryCache<string, User>>();
+    var l1Tiny = sp.GetRequiredService<EnhancedWTinyLFUInMemoryCache<string, User>>();
     var redisCache = sp.GetRequiredService<RedisCache<string, User>>();
     var loader = sp.GetRequiredService<Func<string, CancellationToken, Task<User>>>();
     var logger = sp.GetRequiredService<ILogger<MultilayerCacheManager<string, User>>>();
     var opts = sp.GetRequiredService<IOptions<MultilayerCacheOptions>>().Value;
 
     var cacheManager = new MultilayerCacheManager<string, User>(
-        new ICache<string, User>[] { memCache, redisCache },
+        new ICache<string, User>[] { l1Tiny, redisCache },
         loader,
         logger,
         defaultTtl: opts.DefaultTtl,
@@ -177,7 +179,6 @@ app.MapGet("/api/cache/metrics", () =>
 // --- Periodic metrics dump to JSON file ---
 var metricsFilePath = "cache_metrics.json";
 var metricsDumpInterval = TimeSpan.FromSeconds(30);
-
 _ = Task.Run(async () =>
 {
     while (true)
@@ -222,7 +223,6 @@ _ = Task.Run(() =>
 Console.CancelKeyPress += (s, e) =>
 {
     Console.WriteLine("Stopping web server...");
-    // NBomber finishes, web server stops
 };
 
 // --- Run web server ---

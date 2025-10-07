@@ -45,22 +45,10 @@ if ($existingProcesses) {
     Write-Host "No existing instances found."
 }
 
-# --- Choose Redis port ---
-Write-Host "`n=== Choosing Redis port ==="
-function Test-PortFree($port) {
-    $tcp = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
-    return -not $tcp
-}
+
 
 $redisPort = 6379
-while (-not (Test-PortFree $redisPort)) {
-    Write-Host "Port $redisPort is in use. Trying next..."
-    $redisPort++
-    if ($redisPort -gt 6390) {
-        Write-Error "❌ Could not find a free port between 6379–6390."
-        exit 1
-    }
-}
+
 Write-Host "✅ Selected Redis port: $redisPort"
 
 # --- Start Redis ---
