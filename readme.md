@@ -379,6 +379,14 @@ var value = await cache.GetOrAddAsync(
 ## Future Improvements
 [MultilayerCache Improvements & Roadmap](future_improvements.md)
 
+## TinyLFU and Bloom Filter
+
+[How TinyLFU and Bloom Filter Work](tinylfu_bloomfilter_doc.md)
+
+## TinyLFUInMemoryCache
+
+[EnhancedWTinyLFUInMemoryCache](tinylfu.md)
+
 ## License
 
 This project is licensed under the MIT License.
